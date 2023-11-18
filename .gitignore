@@ -1,3 +1,4 @@
-Stardew_Player_Arrows/.vs/*
-Stardew_Player_Arrows/obj/*
-.vs/Stardew_Player_Arrows/FileContentIndex/*
+Stardew_Player_Arrows/obj
+Stardew_Player_Arrows/bin
+Stardew_Player_Arrows/.vs
+.vs/*
