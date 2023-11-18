@@ -1,0 +1,10 @@
+{
+  "Name": "PlayerArrows",
+  "Author": "Jwaad",
+  "Version": "1.0.0",
+  "Description": "An arrow pointer to all other players in multiplayer",
+  "UniqueID": "Jwaad.PlayerArrows",
+  "EntryDll": "PlayerArrows.dll",
+  "MinimumApiVersion": "3.0.0",
+  "UpdateKeys": []
+}
