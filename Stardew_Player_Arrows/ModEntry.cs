@@ -7,6 +7,7 @@ using System.Numerics;
 using Microsoft.Xna.Framework;
 using Vector2 = Microsoft.Xna.Framework.Vector2;
 using System;
+using System.Diagnostics;
 
 namespace PlayerArrows.Entry
 {
@@ -16,6 +17,8 @@ namespace PlayerArrows.Entry
         public ModConfig Config;
         private LogLevel ProgramLogLevel = LogLevel.Trace; // By default trace logs. but in debug mode: debug logs
         private bool EventHandlersAttached = false;        // This stops split screen player reattaching event handlers whilly nilly
+        private static Stopwatch ProgramWatch = new Stopwatch();
+        public Dictionary<long, long> PreviousArrowRender = new Dictionary<long, long>();
 
 
         /// <summary>The mod entry point, called after the mod is first loaded.</summary>
@@ -25,6 +28,7 @@ namespace PlayerArrows.Entry
             // Read config
             Config = this.Helper.ReadConfig<ModConfig>();
             ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
+            ProgramWatch.Start(); // couldn't find smapis on easily (for the render loop), so use my own
 
             // Attach event handlers to SMAPI's
             helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;     // Connect to GMCM
@@ -73,11 +77,27 @@ namespace PlayerArrows.Entry
                 setValue: value => HandleFieldChange("Debug", value),
                 fieldId: "Debug"
             );
+
+            // add debug to config
+            configMenu.AddNumberOption(
+                mod: this.ModManifest,
+                name: () => "RenderFPS",
+                tooltip: () => "How many times per second the player arrows should be calculated and drawn. Default = 5",
+                getValue: () => Config.RenderFPS,
+                setValue: value => HandleFieldChange("RenderFPS", value),
+                interval: 1,
+                min: 1,
+                max: 30,
+                fieldId: "RenderFPS"
+            );
+
         }
+
 
         // Handle what to do on change of each config field
         public void HandleFieldChange(string fieldId, object newValue)
         {
+            // Handle config option "Enabled"
             if (fieldId == "Enabled")
             {
                 // If the value didnt change, skip
@@ -102,6 +122,7 @@ namespace PlayerArrows.Entry
                 // Save the new setting to config
                 Config.Enabled = (bool)newValue;
             }
+            // Handle config option "Debug"
             else if (fieldId == "Debug")
             {
                 // If the value didnt change, skip
@@ -113,6 +134,12 @@ namespace PlayerArrows.Entry
                 Config.Debug = (bool)newValue;
                 ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
             }
+            // Handle config option "RenderFPS"
+            else if (fieldId == "RenderFPS")
+            {
+                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.RenderFPS} To {newValue}", ProgramLogLevel);
+                Config.RenderFPS = (int)newValue;
+            }
             else
             {
                 this.Monitor.Log($"{Game1.player.Name}: Unhandled config option", ProgramLogLevel);
@@ -121,6 +148,7 @@ namespace PlayerArrows.Entry
             // Write the changes to config
             this.Helper.WriteConfig(Config);
         }
+
 
         // Attach all of the removeable event handlers to SMAPI's
         private void AttachEventHandlers()
@@ -165,12 +193,14 @@ namespace PlayerArrows.Entry
             this.Monitor.Log($"{Game1.player.Name}: Detached Event handlers", ProgramLogLevel);
         }
 
+
         // Detach all handlers when quitting the game
         private void OnQuitGame(object sender, ReturnedToTitleEventArgs e)
         {
             this.Monitor.Log($"{Game1.player.Name}: Has quit", ProgramLogLevel);
             DetachEventHandlers();
         }
+
 
         // Attach all handlers when loading into a save game
         private void OnLoadGame(object sender, SaveLoadedEventArgs e)
@@ -184,24 +214,68 @@ namespace PlayerArrows.Entry
             }
         }
 
-        ///After world rendewr, we will draw our arrows
+
+        ///After world render, we will draw our arrows
         private void OnWorldRender(object sender, RenderedWorldEventArgs e)
         {
-            string message = "";
+            // Limit this calculation to save resources
+            if ( PreviousArrowRender.ContainsKey(Game1.player.UniqueMultiplayerID) && 
+                (ProgramWatch.ElapsedMilliseconds < (PreviousArrowRender[Game1.player.UniqueMultiplayerID] + (1000 / Config.RenderFPS))) )
+            {
+                return;
+            }
 
+            // TEMP
+            this.Monitor.Log($"{ProgramWatch.ElapsedMilliseconds}", LogLevel.Debug);
+            Vector2 position = new Vector2(1000, 100);
+            Color color = Color.White;
+
+            // vars
+            List<Farmer> sameMapFarmers = new List<Farmer>();
+            List<Farmer> diffMapFarmers = new List<Farmer>();
+
+            // Check which maps each players are in
             foreach (Farmer farmer in Game1.getOnlineFarmers())
             {
+                // Sort based on same or diff maps
                 if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
                 {
-                    message += $"{farmer.Name} ";
+                    if (farmer.currentLocation == Game1.player.currentLocation)
+                    {
+                        sameMapFarmers.Add(farmer);
+                    }
+                    else
+                    {
+                        diffMapFarmers.Add(farmer);
+                    }
                 }
             }
 
-            Vector2 position = new Vector2(1000, 100);
-            Color color1 = Color.White;
-            Color color2 = Color.White;
+            // handle arrows for farmers in same place
+            string message = "";
+            foreach (Farmer farmer in sameMapFarmers)
+            {
+                message += $"{farmer.Name} : {farmer.getTileLocation()} "; // TEMP TODO
+                color = Color.Black;
+            }
+            Game1.drawWithBorder(message, color, color, position);
 
-            Game1.drawWithBorder(message, color1, color2, position);
+            // handle arrows for farmers in diff places
+            message = "";
+            foreach (Farmer farmer in diffMapFarmers)
+            {
+                message += $"{farmer.Name} : {farmer.currentLocation} "; // TEMP TODO
+                color = Color.Red;
+            }
+            Game1.drawWithBorder(message, color, color, position);
+
+            // Update timer for next render
+            if (PreviousArrowRender.ContainsKey(Game1.player.UniqueMultiplayerID))
+            {
+                PreviousArrowRender.Remove(Game1.player.UniqueMultiplayerID);
+            }
+            PreviousArrowRender.Add(Game1.player.UniqueMultiplayerID, ProgramWatch.ElapsedMilliseconds);
+            
         }
     }
 }
