@@ -3,16 +3,19 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using System.Collections.Generic;
-using System.Linq;
+using System.Numerics;
+using Microsoft.Xna.Framework;
+using Vector2 = Microsoft.Xna.Framework.Vector2;
+using System;
 
 namespace PlayerArrows.Entry
 {
 
     internal class ModEntry : Mod
     {
-        public ModConfig Config { get; private set; }
+        public ModConfig Config;
         private LogLevel ProgramLogLevel = LogLevel.Trace; // By default trace logs. but in debug mode: debug logs
-        public List<long> EventHandlersAttached = new List<long>(); // Cause of split screen, need to check this per screen
+        private bool EventHandlersAttached = false;        // This stops split screen player reattaching event handlers whilly nilly
 
 
         /// <summary>The mod entry point, called after the mod is first loaded.</summary>
@@ -122,31 +125,44 @@ namespace PlayerArrows.Entry
         // Attach all of the removeable event handlers to SMAPI's
         private void AttachEventHandlers()
         {
-            if (EventHandlersAttached.Contains(Game1.player.UniqueMultiplayerID))
+            // Only let host attach and detach event handlers in split screen. This wont matter for lan / internet
+            if (Context.IsSplitScreen && !Context.IsMainPlayer)
+            {
+                return;
+            }
+            if (EventHandlersAttached)
             {
                 this.Monitor.Log($"{Game1.player.Name}: Tried to attach event handlers, but they're already attached", LogLevel.Warn);
                 return;
             }
-            // attach handlers
-            this.Helper.Events.GameLoop.UpdateTicked += OnUpdateTick;
+            // Attach handlers
             this.Helper.Events.GameLoop.ReturnedToTitle += OnQuitGame;
+            this.Helper.Events.Display.RenderedWorld += OnWorldRender;
 
             this.Monitor.Log($"{Game1.player.Name}: Attached Event handlers", ProgramLogLevel);
-            EventHandlersAttached.Add(Game1.player.UniqueMultiplayerID);
+            
+            EventHandlersAttached = true;
         }
 
-        // Attach all of the removeable event handlers to SMAPI's
+        // Detach all of the removeable event handlers from SMAPI's
         private void DetachEventHandlers()
         {
-            if (!EventHandlersAttached.Contains(Game1.player.UniqueMultiplayerID))
+            // Only let splitscreen host attach and detach event handlers in split screen. This wont effect lan / internet
+            if (Context.IsSplitScreen && !Context.IsMainPlayer)
+            {
+                return;
+            }
+            if (!EventHandlersAttached)
             {
                 this.Monitor.Log($"{Game1.player.Name}: Tried to detach event handlers, but they're already detached", LogLevel.Warn);
                 return;
             }
-            this.Helper.Events.GameLoop.UpdateTicked -= OnUpdateTick;
+            // Detach Handlers
             this.Helper.Events.GameLoop.ReturnedToTitle -= OnQuitGame;
+
+            EventHandlersAttached = false;
+
             this.Monitor.Log($"{Game1.player.Name}: Detached Event handlers", ProgramLogLevel);
-            EventHandlersAttached.Remove(Game1.player.UniqueMultiplayerID);
         }
 
         // Detach all handlers when quitting the game
@@ -161,17 +177,31 @@ namespace PlayerArrows.Entry
         {
             if (Config.Enabled)
             {
+                
                 this.Monitor.Log($"{Game1.player.Name}: Has loaded into world", ProgramLogLevel);
                 AttachEventHandlers();
+
             }
         }
 
-        private void OnUpdateTick(object sender, UpdateTickedEventArgs e)
+        ///After world rendewr, we will draw our arrows
+        private void OnWorldRender(object sender, RenderedWorldEventArgs e)
         {
-            if (e.IsMultipleOf(30))
+            string message = "";
+
+            foreach (Farmer farmer in Game1.getOnlineFarmers())
             {
-                //this.Monitor.Log("TICK", ProgramLogLevel);
+                if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
+                {
+                    message += $"{farmer.Name} ";
+                }
             }
+
+            Vector2 position = new Vector2(1000, 100);
+            Color color1 = Color.White;
+            Color color2 = Color.White;
+
+            Game1.drawWithBorder(message, color1, color2, position);
         }
     }
 }
