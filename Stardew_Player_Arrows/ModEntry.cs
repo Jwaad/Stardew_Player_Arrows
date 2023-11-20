@@ -17,9 +17,8 @@ namespace PlayerArrows.Entry
         public ModConfig Config;
         private LogLevel ProgramLogLevel = LogLevel.Trace; // By default trace logs. but in debug mode: debug logs
         private bool EventHandlersAttached = false;        // This stops split screen player reattaching event handlers whilly nilly
-        private static Stopwatch ProgramWatch = new Stopwatch();
-        public Dictionary<long, long> PreviousArrowRender = new Dictionary<long, long>();
-
+        public Dictionary<long, List<Farmer>> PlayersSameMap = new();
+        public Dictionary<long, List<Farmer>> PlayersDiffMap = new();
 
         /// <summary>The mod entry point, called after the mod is first loaded.</summary>
         /// <param name="helper">Provides simplified APIs for writing mods.</param>
@@ -28,8 +27,7 @@ namespace PlayerArrows.Entry
             // Read config
             Config = this.Helper.ReadConfig<ModConfig>();
             ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
-            ProgramWatch.Start(); // couldn't find smapis on easily (for the render loop), so use my own
-
+            
             // Attach event handlers to SMAPI's
             helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;     // Connect to GMCM
             this.Helper.Events.GameLoop.SaveLoaded += OnLoadGame;           // Attach Handlers on save load
@@ -83,7 +81,7 @@ namespace PlayerArrows.Entry
                 mod: this.ModManifest,
                 name: () => "RenderFPS",
                 tooltip: () => "How many times per second the player arrows should be calculated and drawn. Default = 5",
-                getValue: () => Config.RenderFPS,
+                getValue: () => Config.PlayerLocationUpdateFPS,
                 setValue: value => HandleFieldChange("RenderFPS", value),
                 interval: 1,
                 min: 1,
@@ -137,8 +135,8 @@ namespace PlayerArrows.Entry
             // Handle config option "RenderFPS"
             else if (fieldId == "RenderFPS")
             {
-                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.RenderFPS} To {newValue}", ProgramLogLevel);
-                Config.RenderFPS = (int)newValue;
+                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.PlayerLocationUpdateFPS} To {newValue}", ProgramLogLevel);
+                Config.PlayerLocationUpdateFPS = (int)newValue;
             }
             else
             {
@@ -166,10 +164,15 @@ namespace PlayerArrows.Entry
             // Attach handlers
             this.Helper.Events.GameLoop.ReturnedToTitle += OnQuitGame;
             this.Helper.Events.Display.RenderedWorld += OnWorldRender;
+            this.Helper.Events.GameLoop.UpdateTicked += onUpdateLoop;
+
+            // Populate two dictionaries for storage of farmer locations for this player
+            PlayersSameMap.Add(Game1.player.UniqueMultiplayerID, new List<Farmer>());
+            PlayersDiffMap.Add(Game1.player.UniqueMultiplayerID, new List<Farmer>());
+
+            EventHandlersAttached = true;
 
             this.Monitor.Log($"{Game1.player.Name}: Attached Event handlers", ProgramLogLevel);
-            
-            EventHandlersAttached = true;
         }
 
         // Detach all of the removeable event handlers from SMAPI's
@@ -187,6 +190,12 @@ namespace PlayerArrows.Entry
             }
             // Detach Handlers
             this.Helper.Events.GameLoop.ReturnedToTitle -= OnQuitGame;
+            this.Helper.Events.Display.RenderedWorld -= OnWorldRender;
+            this.Helper.Events.GameLoop.UpdateTicked -= onUpdateLoop;
+
+            // Remove player from dictionaries
+            PlayersSameMap.Remove(Game1.player.UniqueMultiplayerID);
+            PlayersDiffMap.Remove(Game1.player.UniqueMultiplayerID);
 
             EventHandlersAttached = false;
 
@@ -198,6 +207,7 @@ namespace PlayerArrows.Entry
         private void OnQuitGame(object sender, ReturnedToTitleEventArgs e)
         {
             this.Monitor.Log($"{Game1.player.Name}: Has quit", ProgramLogLevel);
+            PlayersSameMap.Add(Game1.player.UniqueMultiplayerID, new List<Farmer>());
             DetachEventHandlers();
         }
 
@@ -207,32 +217,21 @@ namespace PlayerArrows.Entry
         {
             if (Config.Enabled)
             {
-                
                 this.Monitor.Log($"{Game1.player.Name}: Has loaded into world", ProgramLogLevel);
                 AttachEventHandlers();
-
             }
         }
 
-
-        ///After world render, we will draw our arrows
-        private void OnWorldRender(object sender, RenderedWorldEventArgs e)
+        private void onUpdateLoop(object sender, UpdateTickedEventArgs e)
         {
-            // Limit this calculation to save resources
-            if ( PreviousArrowRender.ContainsKey(Game1.player.UniqueMultiplayerID) && 
-                (ProgramWatch.ElapsedMilliseconds < (PreviousArrowRender[Game1.player.UniqueMultiplayerID] + (1000 / Config.RenderFPS))) )
+            // Limit updates to FPS specified in config
+            if ( !e.IsMultipleOf((uint)(60 / Config.PlayerLocationUpdateFPS)))
             {
                 return;
             }
-
-            // TEMP
-            this.Monitor.Log($"{ProgramWatch.ElapsedMilliseconds}", LogLevel.Debug);
-            Vector2 position = new Vector2(1000, 100);
-            Color color = Color.White;
-
-            // vars
-            List<Farmer> sameMapFarmers = new List<Farmer>();
-            List<Farmer> diffMapFarmers = new List<Farmer>();
+            // Reset previous result
+            PlayersSameMap[Game1.player.UniqueMultiplayerID] = new List<Farmer>();
+            PlayersDiffMap[Game1.player.UniqueMultiplayerID] = new List<Farmer>();
 
             // Check which maps each players are in
             foreach (Farmer farmer in Game1.getOnlineFarmers())
@@ -242,40 +241,50 @@ namespace PlayerArrows.Entry
                 {
                     if (farmer.currentLocation == Game1.player.currentLocation)
                     {
-                        sameMapFarmers.Add(farmer);
+                        PlayersSameMap[Game1.player.UniqueMultiplayerID].Add(farmer);
                     }
                     else
                     {
-                        diffMapFarmers.Add(farmer);
+                        PlayersDiffMap[Game1.player.UniqueMultiplayerID].Add(farmer);
                     }
                 }
             }
+            
+            //TEMP
+            if (Config.Debug) 
+            {
+                this.Monitor.Log($"Updated locations for player {Game1.player.Name}" , ProgramLogLevel);
+            }
+        }
+
+
+        ///After world render, we will draw our arrows
+        private void OnWorldRender(object sender, RenderedWorldEventArgs e)
+        {
+            Vector2 position1 = new Vector2(0, 100);
+            Vector2 position2 = new Vector2(0, 300);
+            Color color1 = Color.Black;
+            Color color2 = Color.Red;
 
             // handle arrows for farmers in same place
-            string message = "";
-            foreach (Farmer farmer in sameMapFarmers)
+            string message1 = "Same Map: ";
+            foreach (Farmer farmer in PlayersSameMap[Game1.player.UniqueMultiplayerID])
             {
-                message += $"{farmer.Name} : {farmer.getTileLocation()} "; // TEMP TODO
-                color = Color.Black;
+                message1 += $"{farmer.Name} : {farmer.getTileLocation()} "; // TEMP TODO
             }
-            Game1.drawWithBorder(message, color, color, position);
 
             // handle arrows for farmers in diff places
-            message = "";
-            foreach (Farmer farmer in diffMapFarmers)
+            string message2 = "Different Map: ";
+            foreach (Farmer farmer in PlayersDiffMap[Game1.player.UniqueMultiplayerID])
             {
-                message += $"{farmer.Name} : {farmer.currentLocation} "; // TEMP TODO
-                color = Color.Red;
+                message2 += $"{farmer.Name} : {farmer.currentLocation} "; // TEMP TODO
             }
-            Game1.drawWithBorder(message, color, color, position);
 
-            // Update timer for next render
-            if (PreviousArrowRender.ContainsKey(Game1.player.UniqueMultiplayerID))
-            {
-                PreviousArrowRender.Remove(Game1.player.UniqueMultiplayerID);
-            }
-            PreviousArrowRender.Add(Game1.player.UniqueMultiplayerID, ProgramWatch.ElapsedMilliseconds);
-            
+            // Draw for players in same map
+            Game1.drawWithBorder(message1, color1, color1, position1);
+
+            // Draw for players in different maps
+            Game1.drawWithBorder(message2, color2, color2, position2);
         }
     }
 }
