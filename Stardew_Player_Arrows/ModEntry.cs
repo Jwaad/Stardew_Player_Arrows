@@ -249,12 +249,6 @@ namespace PlayerArrows.Entry
                     }
                 }
             }
-            
-            //TEMP
-            if (Config.Debug) 
-            {
-                this.Monitor.Log($"Updated locations for player {Game1.player.Name}" , ProgramLogLevel);
-            }
         }
 
 
@@ -263,14 +257,22 @@ namespace PlayerArrows.Entry
         {
             Vector2 position1 = new Vector2(0, 100);
             Vector2 position2 = new Vector2(0, 300);
-            Color color1 = Color.Black;
+            Color color1 = Color.Red;
             Color color2 = Color.Red;
 
             // handle arrows for farmers in same place
             string message1 = "Same Map: ";
             foreach (Farmer farmer in PlayersSameMap[Game1.player.UniqueMultiplayerID])
             {
-                message1 += $"{farmer.Name} : {farmer.getTileLocation()} "; // TEMP TODO
+                Vector2 playerLocation = Game1.player.position.Get();
+                Vector2 farmerLocation = farmer.position.Get();
+                //double distance = Math.Sqrt(Math.Pow(farmerLocation.X - playerLocation.X, 2) + Math.Pow(farmerLocation.Y - playerLocation.Y, 2));
+                double angle = Math.Atan2((farmerLocation.Y - playerLocation.Y), (farmerLocation.X - playerLocation.X));
+                message1 += $" {farmer.Name} : {farmerLocation} Angle: {angle * (Math.PI / 180.0)} "; // TEMP TODO
+                
+                int arrowX = (int)((Game1.viewport.Width*0.3) / 2 * Math.Cos(angle) + (Game1.viewport.Width / 2) - (playerLocation.X - Game1.viewportCenter.X));
+                int arrowY = (int)((Game1.viewport.Height * 0.3) / 2 * Math.Sin(angle) + (Game1.viewport.Height / 2) - (playerLocation.Y - Game1.viewportCenter.Y));
+                Game1.DrawBox(arrowX, arrowY, 50, 50, color1);
             }
 
             // handle arrows for farmers in diff places
