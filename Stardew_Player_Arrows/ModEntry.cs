@@ -8,6 +8,10 @@ using Microsoft.Xna.Framework;
 using Vector2 = Microsoft.Xna.Framework.Vector2;
 using System;
 using System.Diagnostics;
+using Microsoft.Xna.Framework.Graphics;
+using StardewValley.Monsters;
+using System.Reflection.Metadata;
+using PlayerArrows.Objects;
 
 namespace PlayerArrows.Entry
 {
@@ -16,18 +20,24 @@ namespace PlayerArrows.Entry
     {
         public ModConfig Config;
         private LogLevel ProgramLogLevel = LogLevel.Trace; // By default trace logs. but in debug mode: debug logs
-        private bool EventHandlersAttached = false;        // This stops split screen player reattaching event handlers whilly nilly
-        public Dictionary<long, List<Farmer>> PlayersSameMap = new();
+        private bool EventHandlersAttached = false;        
+        public Dictionary<long, List<PlayerArrow>> PlayersSameMap = new();
         public Dictionary<long, List<Farmer>> PlayersDiffMap = new();
+        private Texture2D ArrowBody;
+        private Texture2D ArrowBorder;
 
         /// <summary>The mod entry point, called after the mod is first loaded.</summary>
         /// <param name="helper">Provides simplified APIs for writing mods.</param>
         public override void Entry(IModHelper helper)
         {
+            // Load arrow textures
+            ArrowBody = helper.ModContent.Load<Texture2D>("assets/PlayerArrowColour.png");
+            ArrowBorder = helper.ModContent.Load<Texture2D>("assets/PlayerArrowBorder.png");
+
             // Read config
             Config = this.Helper.ReadConfig<ModConfig>();
             ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
-            
+
             // Attach event handlers to SMAPI's
             helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;     // Connect to GMCM
             this.Helper.Events.GameLoop.SaveLoaded += OnLoadGame;           // Attach Handlers on save load
@@ -80,12 +90,12 @@ namespace PlayerArrows.Entry
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
                 name: () => "RenderFPS",
-                tooltip: () => "How many times per second the player arrows should be calculated and drawn. Default = 5",
+                tooltip: () => "How many times per second the player arrows should be calculated and drawn. Default = 40",
                 getValue: () => Config.PlayerLocationUpdateFPS,
                 setValue: value => HandleFieldChange("RenderFPS", value),
                 interval: 1,
                 min: 1,
-                max: 30,
+                max: 60,
                 fieldId: "RenderFPS"
             );
 
@@ -154,7 +164,7 @@ namespace PlayerArrows.Entry
             // Only let host attach and detach event handlers in split screen. This wont matter for lan / internet
             if (Context.IsSplitScreen && !Context.IsMainPlayer)
             {
-                return;
+                return; // This stops split screen player reattaching event handlers whilly nilly
             }
             if (EventHandlersAttached)
             {
@@ -164,10 +174,10 @@ namespace PlayerArrows.Entry
             // Attach handlers
             this.Helper.Events.GameLoop.ReturnedToTitle += OnQuitGame;
             this.Helper.Events.Display.RenderedWorld += OnWorldRender;
-            this.Helper.Events.GameLoop.UpdateTicked += onUpdateLoop;
+            this.Helper.Events.GameLoop.UpdateTicked += OnUpdateLoop;
 
             // Populate two dictionaries for storage of farmer locations for this player
-            PlayersSameMap.Add(Game1.player.UniqueMultiplayerID, new List<Farmer>());
+            PlayersSameMap.Add(Game1.player.UniqueMultiplayerID, new List<PlayerArrow>());
             PlayersDiffMap.Add(Game1.player.UniqueMultiplayerID, new List<Farmer>());
 
             EventHandlersAttached = true;
@@ -191,7 +201,7 @@ namespace PlayerArrows.Entry
             // Detach Handlers
             this.Helper.Events.GameLoop.ReturnedToTitle -= OnQuitGame;
             this.Helper.Events.Display.RenderedWorld -= OnWorldRender;
-            this.Helper.Events.GameLoop.UpdateTicked -= onUpdateLoop;
+            this.Helper.Events.GameLoop.UpdateTicked -= OnUpdateLoop;
 
             // Remove player from dictionaries
             PlayersSameMap.Remove(Game1.player.UniqueMultiplayerID);
@@ -207,7 +217,7 @@ namespace PlayerArrows.Entry
         private void OnQuitGame(object sender, ReturnedToTitleEventArgs e)
         {
             this.Monitor.Log($"{Game1.player.Name}: Has quit", ProgramLogLevel);
-            PlayersSameMap.Add(Game1.player.UniqueMultiplayerID, new List<Farmer>());
+            //PlayersSameMap.Add(Game1.player.UniqueMultiplayerID, new List<PlayerArrow>());
             DetachEventHandlers();
         }
 
@@ -222,16 +232,17 @@ namespace PlayerArrows.Entry
             }
         }
 
-        private void onUpdateLoop(object sender, UpdateTickedEventArgs e)
+        private void OnUpdateLoop(object sender, UpdateTickedEventArgs e)
         {
             // Limit updates to FPS specified in config
-            if ( !e.IsMultipleOf((uint)(60 / Config.PlayerLocationUpdateFPS)))
+            if (!e.IsMultipleOf((uint)(60 / Config.PlayerLocationUpdateFPS)))
             {
                 return;
             }
             // Reset previous result
-            PlayersSameMap[Game1.player.UniqueMultiplayerID] = new List<Farmer>();
+            PlayersSameMap[Game1.player.UniqueMultiplayerID] = new List<PlayerArrow>();
             PlayersDiffMap[Game1.player.UniqueMultiplayerID] = new List<Farmer>();
+
 
             // Check which maps each players are in
             foreach (Farmer farmer in Game1.getOnlineFarmers())
@@ -241,7 +252,22 @@ namespace PlayerArrows.Entry
                 {
                     if (farmer.currentLocation == Game1.player.currentLocation)
                     {
-                        PlayersSameMap[Game1.player.UniqueMultiplayerID].Add(farmer);
+                        // Cache location
+                        Vector2 playerLocation = Game1.player.position.Get();
+                        Vector2 farmerLocation = farmer.position.Get();
+
+                        // Compute angle difference
+                        double angle = Math.Atan2((farmerLocation.Y - (playerLocation.Y + 25)), (farmerLocation.X - playerLocation.X));
+
+                        // Set pos of arrow
+                        int arrowX = (int)( (Game1.viewport.Width / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2));
+                        int arrowY = (int)( (Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
+
+                        Vector2 position = new Vector2((int)(arrowX), (int)(arrowY));
+
+                        // currently this creates and destorys instances every loop.
+                        PlayerArrow playerArrow = new PlayerArrow(position, angle, farmer.UniqueMultiplayerID, ArrowBody, ArrowBorder);
+                        PlayersSameMap[Game1.player.UniqueMultiplayerID].Add(playerArrow);
                     }
                     else
                     {
@@ -255,38 +281,103 @@ namespace PlayerArrows.Entry
         ///After world render, we will draw our arrows
         private void OnWorldRender(object sender, RenderedWorldEventArgs e)
         {
-            Vector2 position1 = new Vector2(0, 100);
-            Vector2 position2 = new Vector2(0, 300);
-            Color color1 = Color.Red;
-            Color color2 = Color.Red;
-
-            // handle arrows for farmers in same place
-            string message1 = "Same Map: ";
-            foreach (Farmer farmer in PlayersSameMap[Game1.player.UniqueMultiplayerID])
+            // Draw to UI not to world
+            Game1.InUIMode(() =>
             {
-                Vector2 playerLocation = Game1.player.position.Get();
-                Vector2 farmerLocation = farmer.position.Get();
-                //double distance = Math.Sqrt(Math.Pow(farmerLocation.X - playerLocation.X, 2) + Math.Pow(farmerLocation.Y - playerLocation.Y, 2));
-                double angle = Math.Atan2((farmerLocation.Y - playerLocation.Y), (farmerLocation.X - playerLocation.X));
-                message1 += $" {farmer.Name} : {farmerLocation} Angle: {angle * (Math.PI / 180.0)} "; // TEMP TODO
-                
-                int arrowX = (int)((Game1.viewport.Width*0.3) / 2 * Math.Cos(angle) + (Game1.viewport.Width / 2) - (playerLocation.X - Game1.viewportCenter.X));
-                int arrowY = (int)((Game1.viewport.Height * 0.3) / 2 * Math.Sin(angle) + (Game1.viewport.Height / 2) - (playerLocation.Y - Game1.viewportCenter.Y));
-                Game1.DrawBox(arrowX, arrowY, 50, 50, color1);
-            }
+                // Handle arrows for farmers in same place
+                string message1 = "Same Map: ";
+                if (PlayersSameMap[Game1.player.UniqueMultiplayerID].Count > 0)
+                {
+                    foreach (PlayerArrow arrow in PlayersSameMap[Game1.player.UniqueMultiplayerID])
+                    {
+                        arrow.DrawArrow(e);
+                        message1 += $" {arrow.UniqueMultiplayerID} : {arrow.ArrowAngle}"; // TEMP TODO
+                    }
+                }
 
-            // handle arrows for farmers in diff places
-            string message2 = "Different Map: ";
-            foreach (Farmer farmer in PlayersDiffMap[Game1.player.UniqueMultiplayerID])
-            {
-                message2 += $"{farmer.Name} : {farmer.currentLocation} "; // TEMP TODO
-            }
+                // handle arrows for farmers in diff places
+                string message2 = "Different Map: ";
+                foreach (Farmer farmer in PlayersDiffMap[Game1.player.UniqueMultiplayerID])
+                {
+                    message2 += $"{farmer.Name} : {farmer.currentLocation} "; // TEMP TODO
+                }
 
-            // Draw for players in same map
-            Game1.drawWithBorder(message1, color1, color1, position1);
+                // Set pos for text
+                Vector2 position1 = new Vector2(0, 100);
+                Vector2 position2 = new Vector2(0, 300);
+                Color color = Color.Red;
 
-            // Draw for players in different maps
-            Game1.drawWithBorder(message2, color2, color2, position2);
+                // Write info for players in same map
+                Game1.drawWithBorder(message1, color, color, position1);
+
+                // Write info for players in different maps
+                Game1.drawWithBorder(message2, color, color, position2);
+
+            });
         }
     }
 }
+
+
+namespace PlayerArrows.Objects
+{
+
+    public class PlayerArrow
+    {
+
+        // Vars for drawing
+        public Vector2 Position { get; set; } = new Vector2(0, 0);
+        public Vector2 Origin { get; private set; }
+        private Texture2D ArrowBorder;
+        private Texture2D ArrowBody;
+        public Color BorderColor { get; set; } = Color.Black;
+        public Color BodyColor { get; set; } = Color.White;
+        public float ArrowAngle { get; set; } = 0;
+        public float Scale { get; set; } = 1f;
+        public float LayerDepth { get; set; } = 0f;
+        public long UniqueMultiplayerID { get; set; } = 0;
+
+
+        // Constructor, set initial Position and Angle. Also load textures here
+        public PlayerArrow(Vector2 position, double angle, long uniqueMultiplayerID, Texture2D arrowBody, Texture2D arrowBorder)
+        {
+            ArrowBody = arrowBody;
+            ArrowBorder = arrowBorder;
+
+            Position = position;
+            ArrowAngle = (float)(angle - (Math.PI / 2)); // Rotate 90 deg;
+            UniqueMultiplayerID = uniqueMultiplayerID;
+
+            Origin = new Vector2(ArrowBody.Width / 2, ArrowBody.Height / 2); 
+        }
+
+        // Draw arrow
+        public void DrawArrow(RenderedWorldEventArgs e) 
+        {
+            //Game1.uiViewport
+            e.SpriteBatch.Draw(ArrowBody, Position, null, BodyColor, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
+            e.SpriteBatch.Draw(ArrowBorder, Position, null, BorderColor, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
+        }
+
+    }
+}
+
+
+
+
+/*
+Vector2 playerLocation = Game1.player.position.Get();
+Vector2 farmerLocation = farmer.position.Get();
+//double distance = Math.Sqrt(Math.Pow(farmerLocation.X - playerLocation.X, 2) + Math.Pow(farmerLocation.Y - playerLocation.Y, 2));
+double angle = Math.Atan2((farmerLocation.Y - (playerLocation.Y + 25)), (farmerLocation.X - playerLocation.X));
+message1 += $" {farmer.Name} : {farmerLocation} Angle: {angle * (Math.PI / 180.0)} "; // TEMP TODO
+
+int arrowX = (int)(((Game1.viewport.Width) / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2) - (playerLocation.X - Game1.viewportCenter.X));
+int arrowY = (int)(((Game1.viewport.Height) / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2) - (playerLocation.Y - Game1.viewportCenter.Y));
+
+Vector2 position = new Vector2((int)(arrowX), (int)(arrowY));
+Vector2 origin = new Vector2(ArrowColour.Width / 2, ArrowColour.Height / 2);
+
+e.SpriteBatch.Draw(ArrowColour, position, null, Color.White, (float)(angle - (Math.PI / 2)), origin, 1f, SpriteEffects.None, 0f);
+e.SpriteBatch.Draw(ArrowBorder, position, null, Color.White, (float)(angle - (Math.PI / 2)), origin, 1f, SpriteEffects.None, 0f);
+*/
