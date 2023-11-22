@@ -13,6 +13,7 @@ using StardewValley.Monsters;
 using System.Reflection.Metadata;
 using PlayerArrows.Objects;
 using xTile.Dimensions;
+using Vector4 = Microsoft.Xna.Framework.Vector4;
 
 namespace PlayerArrows.Entry
 {
@@ -86,11 +87,13 @@ namespace PlayerArrows.Entry
                 fieldId: "Debug"
             );
 
-            // add debug to config
+            // Add option to change how smoothness - performance ratio
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
                 name: () => "RenderFPS",
-                tooltip: () => "How many times per second the player arrows should be calculated and drawn. Default = 40",
+                tooltip: () => "Default = 40. How many times per second the player arrows" +
+                " should be updated. Lowering this number can increase performance," +
+                " but will cause arrows to move less smoothly",
                 getValue: () => Config.PlayerLocationUpdateFPS,
                 setValue: value => HandleFieldChange("RenderFPS", value),
                 interval: 1,
@@ -99,6 +102,18 @@ namespace PlayerArrows.Entry
                 fieldId: "RenderFPS"
             );
 
+            // Add option to edit opacity
+            configMenu.AddNumberOption(
+                mod: this.ModManifest,
+                name: () => "ArrowOpacity",
+                tooltip: () => "How much opacity arrows should have. 100 = 100% opaque",
+                getValue: () => Config.ArrowOpacity,
+                setValue: value => HandleFieldChange("ArrowOpacity", value),
+                interval: 1,
+                min: 1,
+                max: 100,
+                fieldId: "ArrowOpacity"
+            );
         }
 
 
@@ -148,10 +163,17 @@ namespace PlayerArrows.Entry
                 this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.PlayerLocationUpdateFPS} To {newValue}", ProgramLogLevel);
                 Config.PlayerLocationUpdateFPS = (int)newValue;
             }
+            // Handle config option "Opacity"
+            else if (fieldId == "ArrowOpacity")
+            {
+                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ArrowOpacity} To {newValue}", ProgramLogLevel);
+                Config.ArrowOpacity = (int)newValue;
+            }
             else
             {
                 this.Monitor.Log($"{Game1.player.Name}: Unhandled config option", ProgramLogLevel);
             }
+
 
             // Write the changes to config
             this.Helper.WriteConfig(Config);
@@ -329,15 +351,16 @@ namespace PlayerArrows.Entry
                             continue;
                         }
                         // TEMPORARILY DONT DRAW DIFF MAP ARROWS. UNTIL WE MAKE THE METHODS TO TRACK MAP LOCATIONS
-                        if (!arrow.SameMap)
+                        if (!arrow.SameMap) // TEMP
                         {
                             continue; // TEMP
                         }
+                        arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100; // update arrow opacity, incase it changed
+                        this.Monitor.Log($"OPACITY {arrow.Opacity}", ProgramLogLevel);
                         arrow.DrawArrow(e);
                     }
                 }
             });
-
         }
     }
 }
@@ -361,6 +384,7 @@ namespace PlayerArrows.Objects
         public float LayerDepth { get; set; } = 0f;
         public bool SameMap = false;        // If this arrow points to someone on same map as player
         public bool TargetOnScreen = false; // Store here so we can track if player is visible
+        public float Opacity;
 
 
         // Constructor, set initial Position and Angle. Also load textures here
@@ -379,9 +403,8 @@ namespace PlayerArrows.Objects
         // Draw arrow
         public void DrawArrow(RenderedWorldEventArgs e) 
         {
-            //Game1.uiViewport
-            e.SpriteBatch.Draw(ArrowBody, Position, null, BodyColor, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
-            e.SpriteBatch.Draw(ArrowBorder, Position, null, BorderColor, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
+            e.SpriteBatch.Draw(ArrowBody, Position, null, BodyColor * (float)Opacity, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
+            e.SpriteBatch.Draw(ArrowBorder, Position, null, BorderColor * (float)Opacity, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
         }
 
     }
