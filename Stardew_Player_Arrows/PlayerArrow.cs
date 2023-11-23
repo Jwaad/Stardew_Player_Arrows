@@ -91,9 +91,9 @@ namespace PlayerArrows.Objects
         private Color GenerateRandomColor()
         {
             return new Color(
-                Randomiser.Next(50, 160), // R (0 to 255)
-                Randomiser.Next(50, 160), // G (0 to 255)
-                Randomiser.Next(50, 160), // B (0 to 255) 
+                Randomiser.Next(120, 256), // R (0 to 255)
+                Randomiser.Next(120, 256), // G (0 to 255)
+                Randomiser.Next(120, 256), // B (0 to 255) 
                 255               // A (alpha, fully opaque)
             );
         }
