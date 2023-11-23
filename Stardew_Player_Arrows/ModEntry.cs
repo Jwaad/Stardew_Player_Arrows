@@ -21,6 +21,7 @@ using xTile.Format;
 using Color = Microsoft.Xna.Framework.Color;
 using System.Drawing.Imaging;
 using static System.Net.Mime.MediaTypeNames;
+using System.Xml.Linq;
 
 namespace PlayerArrows.Entry
 {
@@ -175,6 +176,17 @@ namespace PlayerArrows.Entry
                 Config.Debug = (bool)newValue;
                 ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
             }
+            // Handle config option "Debug"
+            else if (fieldId == "NamesOnArrows")
+            {
+                // If the value didnt change, skip
+                if (Config.NamesOnArrows == (bool)newValue)
+                {
+                    return;
+                }
+                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.Debug} To {newValue}", ProgramLogLevel);
+                Config.NamesOnArrows = (bool)newValue;
+            }
             // Handle config option "RenderFPS"
             else if (fieldId == "RenderFPS")
             {
@@ -301,17 +313,17 @@ namespace PlayerArrows.Entry
                     {
                         // Create an instance for them, we will set the position this loop, so just use defaults
                         PlayerArrow playerArrow = new(new(0, 0), 0f, ArrowBody, ArrowBorder, farmer.UniqueMultiplayerID);
-                        playerArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.tinyFont, farmer.Name); // Init display text
+                        playerArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, farmer.Name); // Init display text
+                        this.Monitor.Log($"{Game1.player.Name}: Created new text object for : {farmer.Name}", ProgramLogLevel);
 
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Add(farmer.UniqueMultiplayerID, playerArrow);
 
-                        this.Monitor.Log($"{Game1.player.Name}: instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
+                        this.Monitor.Log($"{Game1.player.Name}: Instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
                     }
 
                     // Sort players between same or different map
                     if (farmer.currentLocation == Game1.player.currentLocation)
                     {
-
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
                         arrowTarget = farmer.position.Get() ;// TODO Location to point to in same map
                     }
@@ -328,8 +340,6 @@ namespace PlayerArrows.Entry
                     int arrowX = (int)((Game1.viewport.Width / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2));
                     int arrowY = (int)((Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
                     Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
-
-                    angle -= (Math.PI / 2); // Use the same angle to specify draw angle for arrow, but rotate 90 deg
 
                     // Check if player is visible in screen
                     Microsoft.Xna.Framework.Rectangle player_box = farmer.GetBoundingBox();
@@ -395,12 +405,13 @@ namespace PlayerArrows.Objects
         // Vars for drawing
         public Vector2 Position { get; set; } = new Vector2(0, 0);
         public Vector2 Origin { get; private set; }
+        public Vector2 TextOrigin { get; private set; }
         private readonly Texture2D ArrowBorder;
         private readonly Texture2D ArrowBody;
-        private Texture2D DisplayTextTexture;
+        private float TextOffset = 0; // Distance text floats above arrow 
+        public Texture2D DisplayTextTexture { get; private set; }
         public Color BorderColor { get; set; } = Color.Black;
         public Color BodyColor { get; set; } = Color.DarkRed;
-        public Color TextColor { get; set; } = Color.White;
         public float ArrowAngle { get; set; } = 0;
         public float Scale { get; set; } = 1f;
         public float LayerDepth { get; set; } = 0f;
@@ -428,19 +439,24 @@ namespace PlayerArrows.Objects
             // Set the default
             Position = position;
             ArrowAngle = (float)(angle); // Rotate 90 deg;
-            Origin = new Vector2(ArrowBody.Width / 2, ArrowBody.Height / 2);
+            Origin = new Vector2(ArrowBody.Width * Scale / 2, ArrowBody.Height * Scale); // Bottom center
         }
 
         // Draw arrow
         public void DrawArrow(RenderedWorldEventArgs e, bool nameOnArrow) 
         {
+
             // Draw arrow
-            e.SpriteBatch.Draw(ArrowBody, Position, null, BodyColor * (float)Opacity, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
-            e.SpriteBatch.Draw(ArrowBorder, Position, null, BorderColor * (float)Opacity, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
+            e.SpriteBatch.Draw(ArrowBody, Position, null, BodyColor * (float)Opacity, ArrowAngle - (float)(Math.PI / 2), Origin, Scale, SpriteEffects.None, LayerDepth);
+            e.SpriteBatch.Draw(ArrowBorder, Position, null, BorderColor * (float)Opacity, ArrowAngle - (float)(Math.PI / 2), Origin, Scale, SpriteEffects.None, LayerDepth);
 
             if (nameOnArrow && TextInitialised)
             {
-                e.SpriteBatch.Draw(DisplayTextTexture, Position, null, BorderColor * (float)Opacity, ArrowAngle, Origin, 100, SpriteEffects.None, LayerDepth);
+                // Move pos along the angle, by offset amount + arrow height. Also rotate 90
+                float textX = Position.X - ((TextOffset + ArrowBody.Height) * (float)Math.Cos(ArrowAngle));
+                float textY = Position.Y - ((TextOffset + ArrowBody.Height) * (float)Math.Sin(ArrowAngle));
+                Vector2 textPosition = new Vector2(textX, textY);
+                e.SpriteBatch.Draw(DisplayTextTexture, textPosition, null, BodyColor * (float)Opacity, ArrowAngle - (float)(Math.PI / 2), TextOrigin, Scale, SpriteEffects.None, LayerDepth);
             }
         }
 
@@ -448,9 +464,9 @@ namespace PlayerArrows.Objects
         private Color GenerateRandomColor()
         {
             return new Color(
-                Randomiser.Next(128, 256), // R (0 to 255)
-                Randomiser.Next(128, 256), // G (0 to 255)
-                Randomiser.Next(128, 256), // B (0 to 255) 
+                Randomiser.Next(100, 256), // R (0 to 255)
+                Randomiser.Next(100, 256), // G (0 to 255)
+                Randomiser.Next(100, 256), // B (0 to 255) 
                 255               // A (alpha, fully opaque)
             );
         }
@@ -459,29 +475,31 @@ namespace PlayerArrows.Objects
         public Texture2D CreateTextPNG(GraphicsDevice graphicsDevice, SpriteFont font, string displayText)
         {
             // Setup render target
-            RenderTarget2D renderTarget = new RenderTarget2D(graphicsDevice, 800, 600);
+            int stringWidth = (int)font.MeasureString(displayText).X;
+            int stringHeight = (int)font.MeasureString(displayText).Y;
+            RenderTarget2D renderTarget = new RenderTarget2D(graphicsDevice, stringWidth, stringHeight);
             graphicsDevice.SetRenderTarget(renderTarget);
-            graphicsDevice.Clear(Color.Transparent);
+            graphicsDevice.Clear(Color.Transparent); //Color.Transparent
 
             // Start sprite batch and draw target
             SpriteBatch spriteBatch = new SpriteBatch(graphicsDevice);
 
             spriteBatch.Begin();
-            spriteBatch.DrawString(font, displayText, new Vector2(100, 100), Color.White);
+            spriteBatch.DrawString(font, displayText, new Vector2(0, 0), Color.White);
             spriteBatch.End();
 
             //using (FileStream stream = new FileStream("mods/Stardew_Player_Arrows/assets/test.png", FileMode.Create, FileAccess.Write))
             using (MemoryStream stream = new MemoryStream())
             {
-                float stringWidth = font.MeasureString(displayText).X;
-                float stringHeight = font.MeasureString(displayText).Y;
-                renderTarget.SaveAsPng(stream, (int)stringWidth, (int)stringHeight);
+                
+                renderTarget.SaveAsPng(stream, stringWidth, stringHeight);
 
                 stream.Seek(0, SeekOrigin.Begin);
                 DisplayTextTexture = Texture2D.FromStream(graphicsDevice, stream);
             }
-
             graphicsDevice.SetRenderTarget(null);
+
+            TextOrigin = new Vector2(DisplayTextTexture.Width * Scale / 2, DisplayTextTexture.Height * Scale); // bottom middle
 
             TextInitialised = true;
 
