@@ -14,6 +14,13 @@ using System.Reflection.Metadata;
 using PlayerArrows.Objects;
 using xTile.Dimensions;
 using Vector4 = Microsoft.Xna.Framework.Vector4;
+using StardewValley.Network;
+using System.Drawing;
+using System.IO;
+using xTile.Format;
+using Color = Microsoft.Xna.Framework.Color;
+using System.Drawing.Imaging;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace PlayerArrows.Entry
 {
@@ -87,6 +94,16 @@ namespace PlayerArrows.Entry
                 fieldId: "Debug"
             );
 
+            // add debug to config
+            configMenu.AddBoolOption(
+                mod: this.ModManifest,
+                name: () => "NamesOnArrows",
+                tooltip: () => "Enable if you want name of target that's being tracked to show above arrow",
+                getValue: () => Config.NamesOnArrows,
+                setValue: value => HandleFieldChange("NamesOnArrows", value),
+                fieldId: "NamesOnArrows"
+            );
+
             // Add option to change how smoothness - performance ratio
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
@@ -114,6 +131,7 @@ namespace PlayerArrows.Entry
                 max: 100,
                 fieldId: "ArrowOpacity"
             );
+
         }
 
 
@@ -282,9 +300,12 @@ namespace PlayerArrows.Entry
                     if (!PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(farmer.UniqueMultiplayerID))
                     {
                         // Create an instance for them, we will set the position this loop, so just use defaults
-                        PlayerArrow playerArrow = new(new(0,0), 0f, ArrowBody, ArrowBorder);
+                        PlayerArrow playerArrow = new(new(0, 0), 0f, ArrowBody, ArrowBorder, farmer.UniqueMultiplayerID);
+                        playerArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.tinyFont, farmer.Name); // Init display text
+
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Add(farmer.UniqueMultiplayerID, playerArrow);
-                        this.Monitor.Log($"{Game1.player.Name}: instanced new player arrow, target: {farmer.name}", ProgramLogLevel);
+
+                        this.Monitor.Log($"{Game1.player.Name}: instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
                     }
 
                     // Sort players between same or different map
@@ -356,8 +377,7 @@ namespace PlayerArrows.Entry
                             continue; // TEMP
                         }
                         arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100; // update arrow opacity, incase it changed
-                        this.Monitor.Log($"OPACITY {arrow.Opacity}", ProgramLogLevel);
-                        arrow.DrawArrow(e);
+                        arrow.DrawArrow(e, this.Config.NamesOnArrows);
                     }
                 }
             });
@@ -377,55 +397,95 @@ namespace PlayerArrows.Objects
         public Vector2 Origin { get; private set; }
         private readonly Texture2D ArrowBorder;
         private readonly Texture2D ArrowBody;
+        private Texture2D DisplayTextTexture;
         public Color BorderColor { get; set; } = Color.Black;
         public Color BodyColor { get; set; } = Color.DarkRed;
+        public Color TextColor { get; set; } = Color.White;
         public float ArrowAngle { get; set; } = 0;
         public float Scale { get; set; } = 1f;
         public float LayerDepth { get; set; } = 0f;
         public bool SameMap = false;        // If this arrow points to someone on same map as player
         public bool TargetOnScreen = false; // Store here so we can track if player is visible
         public float Opacity;
-
+        bool TextInitialised = false;
+        private readonly long PlayerID;
+        private int RandomSeed;
+        Random Randomiser;
 
         // Constructor, set initial Position and Angle. Also load textures here
-        public PlayerArrow(Vector2 position, double angle, Texture2D arrowBody, Texture2D arrowBorder)
+        public PlayerArrow(Vector2 position, double angle, Texture2D arrowBody, Texture2D arrowBorder, long playerID)
         {
             // Load arrow textures
             ArrowBody = arrowBody;
             ArrowBorder = arrowBorder;
 
+            // Derive seed from player ID, so everyone sees them as one colour
+            PlayerID = playerID;
+            RandomSeed = int.Parse((playerID.ToString()).Substring(0, 5)); 
+            Randomiser = new Random(RandomSeed);
+            BodyColor = GenerateRandomColor();
+
+            // Set the default
             Position = position;
             ArrowAngle = (float)(angle); // Rotate 90 deg;
-
-            Origin = new Vector2(ArrowBody.Width / 2, ArrowBody.Height / 2); 
+            Origin = new Vector2(ArrowBody.Width / 2, ArrowBody.Height / 2);
         }
 
         // Draw arrow
-        public void DrawArrow(RenderedWorldEventArgs e) 
+        public void DrawArrow(RenderedWorldEventArgs e, bool nameOnArrow) 
         {
+            // Draw arrow
             e.SpriteBatch.Draw(ArrowBody, Position, null, BodyColor * (float)Opacity, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
             e.SpriteBatch.Draw(ArrowBorder, Position, null, BorderColor * (float)Opacity, ArrowAngle, Origin, Scale, SpriteEffects.None, LayerDepth);
+
+            if (nameOnArrow && TextInitialised)
+            {
+                e.SpriteBatch.Draw(DisplayTextTexture, Position, null, BorderColor * (float)Opacity, ArrowAngle, Origin, 100, SpriteEffects.None, LayerDepth);
+            }
         }
 
+        // Generate Random Colour
+        private Color GenerateRandomColor()
+        {
+            return new Color(
+                Randomiser.Next(128, 256), // R (0 to 255)
+                Randomiser.Next(128, 256), // G (0 to 255)
+                Randomiser.Next(128, 256), // B (0 to 255) 
+                255               // A (alpha, fully opaque)
+            );
+        }
+
+        // Draw some text and save as PNG
+        public Texture2D CreateTextPNG(GraphicsDevice graphicsDevice, SpriteFont font, string displayText)
+        {
+            // Setup render target
+            RenderTarget2D renderTarget = new RenderTarget2D(graphicsDevice, 800, 600);
+            graphicsDevice.SetRenderTarget(renderTarget);
+            graphicsDevice.Clear(Color.Transparent);
+
+            // Start sprite batch and draw target
+            SpriteBatch spriteBatch = new SpriteBatch(graphicsDevice);
+
+            spriteBatch.Begin();
+            spriteBatch.DrawString(font, displayText, new Vector2(100, 100), Color.White);
+            spriteBatch.End();
+
+            //using (FileStream stream = new FileStream("mods/Stardew_Player_Arrows/assets/test.png", FileMode.Create, FileAccess.Write))
+            using (MemoryStream stream = new MemoryStream())
+            {
+                float stringWidth = font.MeasureString(displayText).X;
+                float stringHeight = font.MeasureString(displayText).Y;
+                renderTarget.SaveAsPng(stream, (int)stringWidth, (int)stringHeight);
+
+                stream.Seek(0, SeekOrigin.Begin);
+                DisplayTextTexture = Texture2D.FromStream(graphicsDevice, stream);
+            }
+
+            graphicsDevice.SetRenderTarget(null);
+
+            TextInitialised = true;
+
+            return DisplayTextTexture;
+        }
     }
 }
-
-
-
-
-/*
-Vector2 playerLocation = Game1.player.position.Get();
-Vector2 farmerLocation = farmer.position.Get();
-//double distance = Math.Sqrt(Math.Pow(farmerLocation.X - playerLocation.X, 2) + Math.Pow(farmerLocation.Y - playerLocation.Y, 2));
-double angle = Math.Atan2((farmerLocation.Y - (playerLocation.Y + 25)), (farmerLocation.X - playerLocation.X));
-message1 += $" {farmer.Name} : {farmerLocation} Angle: {angle * (Math.PI / 180.0)} "; // TEMP TODO
-
-int arrowX = (int)(((Game1.viewport.Width) / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2) - (playerLocation.X - Game1.viewportCenter.X));
-int arrowY = (int)(((Game1.viewport.Height) / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2) - (playerLocation.Y - Game1.viewportCenter.Y));
-
-Vector2 position = new Vector2((int)(arrowX), (int)(arrowY));
-Vector2 origin = new Vector2(ArrowColour.Width / 2, ArrowColour.Height / 2);
-
-e.SpriteBatch.Draw(ArrowColour, position, null, Color.White, (float)(angle - (Math.PI / 2)), origin, 1f, SpriteEffects.None, 0f);
-e.SpriteBatch.Draw(ArrowBorder, position, null, Color.White, (float)(angle - (Math.PI / 2)), origin, 1f, SpriteEffects.None, 0f);
-*/
