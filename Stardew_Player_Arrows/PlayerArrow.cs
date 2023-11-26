@@ -22,6 +22,7 @@ using Color = Microsoft.Xna.Framework.Color;
 using System.Drawing.Imaging;
 using static System.Net.Mime.MediaTypeNames;
 using System.Xml.Linq;
+using StardewValley.BellsAndWhistles;
 
 namespace PlayerArrows.Objects
 {
@@ -49,9 +50,10 @@ namespace PlayerArrows.Objects
         private readonly long PlayerID;
         private int RandomSeed;
         Random Randomiser;
+        ModConfig Config;
 
         // Constructor, set initial Position and Angle. Also load textures here
-        public PlayerArrow(Vector2 position, double angle, Texture2D arrowBody, Texture2D arrowBorder, long playerID)
+        public PlayerArrow(Vector2 position, double angle, Texture2D arrowBody, Texture2D arrowBorder, long playerID, ModConfig config)
         {
             // Load arrow textures
             ArrowBody = arrowBody;
@@ -61,12 +63,13 @@ namespace PlayerArrows.Objects
             PlayerID = playerID;
             RandomSeed = int.Parse((playerID.ToString()).Substring(0, 5));
             Randomiser = new Random(RandomSeed);
-            BodyColor = GenerateRandomColor();
+            BodyColor = GenerateRandomColor(config.ColourPalette);
 
             // Set the default
             Position = position;
             ArrowAngle = (float)(angle); // Rotate 90 deg;
             Origin = new Vector2(ArrowBody.Width * Scale / 2, ArrowBody.Height * Scale); // Bottom center
+            
         }
 
         // Draw arrow
@@ -88,14 +91,47 @@ namespace PlayerArrows.Objects
         }
 
         // Generate Random Colour
-        private Color GenerateRandomColor()
+        private Color GenerateRandomColor(string colourPalette)
         {
-            return new Color(
-                Randomiser.Next(120, 256), // R (0 to 255)
-                Randomiser.Next(120, 256), // G (0 to 255)
-                Randomiser.Next(120, 256), // B (0 to 255) 
-                255               // A (alpha, fully opaque)
-            );
+            switch (colourPalette)
+            {
+                case "Pastel":
+                {
+                    return new Color(
+                    Randomiser.Next(120, 256),
+                    Randomiser.Next(120, 256), 
+                    Randomiser.Next(120, 256), 
+                    255 );
+                }
+                case "Dark":
+                {
+                    return new Color(
+                    Randomiser.Next(0, 150), 
+                    Randomiser.Next(0, 150),
+                    Randomiser.Next(0, 150),
+                    255);
+                }
+                case "All":
+                {
+                    return new Color(
+                    Randomiser.Next(0, 256), 
+                    Randomiser.Next(0, 256),
+                    Randomiser.Next(0, 256), 
+                    255);
+                }
+                case "Black":
+                    {
+                        return Color.Black;
+                    }
+                default:
+                {
+                    return new Color(
+                    Randomiser.Next(0, 256), // R (0 to 255)
+                    Randomiser.Next(0, 256), // G (0 to 255)
+                    Randomiser.Next(0, 256), // B (0 to 255) 
+                    255);               // A (alpha, fully opaque)
+                }
+            }
         }
 
         // Draw some text and save as PNG

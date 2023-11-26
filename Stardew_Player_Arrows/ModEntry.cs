@@ -109,9 +109,9 @@ namespace PlayerArrows.Entry
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
                 name: () => "RenderFPS",
-                tooltip: () => "Default = 40. How many times per second the player arrows" +
-                " should be updated. Lowering this number can increase performance," +
-                " but will cause arrows to move less smoothly",
+                tooltip: () => "Default -> 40. How many times per second the player arrows" +
+                " should be updated.\n" +
+                "Lowering this number can increase performance, but will cause arrows to move less smoothly",
                 getValue: () => Config.PlayerLocationUpdateFPS,
                 setValue: value => HandleFieldChange("RenderFPS", value),
                 interval: 1,
@@ -124,7 +124,7 @@ namespace PlayerArrows.Entry
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
                 name: () => "ArrowOpacity",
-                tooltip: () => "How much opacity arrows should have. 100 = 100% opaque",
+                tooltip: () => "How much opacity arrows should have. 100 -> 100% opaque",
                 getValue: () => Config.ArrowOpacity,
                 setValue: value => HandleFieldChange("ArrowOpacity", value),
                 interval: 1,
@@ -133,6 +133,21 @@ namespace PlayerArrows.Entry
                 fieldId: "ArrowOpacity"
             );
 
+            // Add option to select between some limited colour palettes
+            configMenu.AddTextOption(
+               mod: this.ModManifest,
+               name: () => "ColourPalette",
+               tooltip: () => "Select between some limited randomised colour palettes. \n" +
+               "Pastel -> RBG values of 120 - 255 \n" +
+               "Dark -> RBG values of 0 - 120 \n" +
+               "Black -> All arrows will be 0,0,0 \n" +
+               "All (Default) -> 0 - 255 \n " +
+               "(NOTE: Changes will take effect one restart / world load)",
+               getValue: () => Config.ColourPalette,
+               setValue: value => HandleFieldChange("ColourPalette", value),
+               allowedValues: new string[] { "Pastel", "Dark", "All" },
+               fieldId: "ColourPalette"
+           );
         }
 
 
@@ -199,6 +214,11 @@ namespace PlayerArrows.Entry
                 this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ArrowOpacity} To {newValue}", ProgramLogLevel);
                 Config.ArrowOpacity = (int)newValue;
             }
+            else if (fieldId == "ColourPalette")
+            {
+                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ColourPalette} To {newValue}", ProgramLogLevel);
+                Config.ColourPalette = (string)newValue;
+            }
             else
             {
                 this.Monitor.Log($"{Game1.player.Name}: Unhandled config option", ProgramLogLevel);
@@ -219,7 +239,6 @@ namespace PlayerArrows.Entry
             // Only let host attach and detach event handlers in split screen. This wont matter for lan / internet
             if (Context.IsSplitScreen && !Context.IsMainPlayer)
             {
-
                 return; // This stops split screen player reattaching event handlers whilly nilly
             }
             if (EventHandlersAttached)
@@ -312,7 +331,7 @@ namespace PlayerArrows.Entry
                     if (!PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(farmer.UniqueMultiplayerID))
                     {
                         // Create an instance for them, we will set the position this loop, so just use defaults
-                        PlayerArrow playerArrow = new(new(0, 0), 0f, ArrowBody, ArrowBorder, farmer.UniqueMultiplayerID);
+                        PlayerArrow playerArrow = new(new(0, 0), 0f, ArrowBody, ArrowBorder, farmer.UniqueMultiplayerID, Config);
                         playerArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, farmer.Name); // Init display text
                         this.Monitor.Log($"{Game1.player.Name}: Created new text object for : {farmer.Name}", ProgramLogLevel);
 
