@@ -312,6 +312,18 @@ namespace PlayerArrows.Entry
             {
                 this.Monitor.Log($"{Game1.player.Name}: Has loaded into world", ProgramLogLevel);
                 AttachEventHandlers();
+
+                // TEMPORARY FOR TESTIONG PURPOSES
+                PlayerArrow testArrow = new(new(500, 500), 1f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
+                testArrow.SameMap = true;
+                testArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "THIS IS A TEST ARROW"); // Init display text
+
+                PlayerArrow testArrow2 = new(new(1000, 100), 2f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
+                testArrow2.SameMap = true;
+                testArrow2.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "TestArrow2"); // Init display text
+
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID] = testArrow;
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID * 2] = testArrow2;
             }
         }
 
@@ -413,6 +425,7 @@ namespace PlayerArrows.Entry
 
                 if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Count > 0)
                 {
+                    
                     // Draw the stored arrows
                     foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
                     {
@@ -426,6 +439,7 @@ namespace PlayerArrows.Entry
                         {
                             continue; // TEMP
                         }
+
                         arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100; // update arrow opacity, incase it changed
                         arrow.DrawArrow(e, this.Config.NamesOnArrows);
                     }
