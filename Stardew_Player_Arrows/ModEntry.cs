@@ -154,79 +154,89 @@ namespace PlayerArrows.Entry
         // Handle what to do on change of each config field
         public void HandleFieldChange(string fieldId, object newValue)
         {
-            // Handle config option "Enabled"
-            if (fieldId == "Enabled")
+            switch (fieldId) 
             {
+                // Handle config option "Enabled"
+                case "Enabled":
+                    {
+                    // If the value didnt change, skip
+                    if (Config.Enabled == (bool)newValue)
+                    {
+                        return;
+                    }
+                    // Detach the mod code from Smapi
+                    if (Config.Enabled)
+                    {
+                        this.Monitor.Log($"{Game1.player.Name}: Disabling Player Arrows", ProgramLogLevel);
+                        this.DetachEventHandlers();
+                    }
+                    // reattach the mod code to Smapi
+                    else
+                    {
+                        this.Monitor.Log($"{Game1.player.Name}: Enabling Player Arrows", ProgramLogLevel);
+                        this.AttachEventHandlers();
+                    }
+
+                    // Save the new setting to config
+                    Config.Enabled = (bool)newValue;
+                    break;
+                    }
+                // Handle config option "Debug"
+                case "Debug":
+                {
+                    // If the value didnt change, skip
+                    if (Config.Debug == (bool)newValue)
+                    {
+                        return;
+                    }
+                    this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.Debug} To {newValue}", ProgramLogLevel);
+                    Config.Debug = (bool)newValue;
+                    ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
+                    break;
+                }
+                // Handle config NamesOnArrows
+                case "NamesOnArrows":
+                {
                 // If the value didnt change, skip
-                if (Config.Enabled == (bool)newValue)
-                {
-                    return;
+                    if (Config.NamesOnArrows == (bool)newValue)
+                    {
+                         return;
+                    }
+                    this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.Debug} To {newValue}", ProgramLogLevel);
+                    Config.NamesOnArrows = (bool)newValue;
+                    break;
                 }
-
-                // Detach the mod code from Smapi
-                if (Config.Enabled)
+                // Handle config option "RenderFPS"
+                case "RenderFPS":
                 {
-                    this.Monitor.Log($"{Game1.player.Name}: Disabling Player Arrows", ProgramLogLevel);
-                    this.DetachEventHandlers();
+                    this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.PlayerLocationUpdateFPS} To {newValue}", ProgramLogLevel);
+                    Config.PlayerLocationUpdateFPS = (int)newValue;
+                    break;
                 }
-                // reattach the mod code to Smapi
-                else
+                // Handle config option "Opacity"
+                case "ArrowOpacity":
                 {
-                    this.Monitor.Log($"{Game1.player.Name}: Enabling Player Arrows", ProgramLogLevel);
-                    this.AttachEventHandlers();
+                    this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ArrowOpacity} To {newValue}", ProgramLogLevel);
+                    Config.ArrowOpacity = (int)newValue;
+                    break;
                 }
-
-                // Save the new setting to config
-                Config.Enabled = (bool)newValue;
-            }
-            // Handle config option "Debug"
-            else if (fieldId == "Debug")
-            {
-                // If the value didnt change, skip
-                if (Config.Debug == (bool)newValue)
+                // Handle config option "ColourPalette"
+                case "ColourPalette":
                 {
-                    return;
+                    this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ColourPalette} To {newValue}", ProgramLogLevel);
+                    Config.ColourPalette = (string)newValue;
+                    break;
                 }
-                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.Debug} To {newValue}", ProgramLogLevel);
-                Config.Debug = (bool)newValue;
-                ProgramLogLevel = Config.Debug ? LogLevel.Debug : LogLevel.Trace;
-            }
-            // Handle config option "Debug"
-            else if (fieldId == "NamesOnArrows")
-            {
-                // If the value didnt change, skip
-                if (Config.NamesOnArrows == (bool)newValue)
+                // Should never occur, but in case i forgot one option
+                default:
                 {
-                    return;
+                    this.Monitor.Log($"{Game1.player.Name}: Unhandled config option", ProgramLogLevel);
+                    break;
                 }
-                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.Debug} To {newValue}", ProgramLogLevel);
-                Config.NamesOnArrows = (bool)newValue;
             }
-            // Handle config option "RenderFPS"
-            else if (fieldId == "RenderFPS")
-            {
-                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.PlayerLocationUpdateFPS} To {newValue}", ProgramLogLevel);
-                Config.PlayerLocationUpdateFPS = (int)newValue;
-            }
-            // Handle config option "Opacity"
-            else if (fieldId == "ArrowOpacity")
-            {
-                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ArrowOpacity} To {newValue}", ProgramLogLevel);
-                Config.ArrowOpacity = (int)newValue;
-            }
-            else if (fieldId == "ColourPalette")
-            {
-                this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.ColourPalette} To {newValue}", ProgramLogLevel);
-                Config.ColourPalette = (string)newValue;
-            }
-            else
-            {
-                this.Monitor.Log($"{Game1.player.Name}: Unhandled config option", ProgramLogLevel);
-            }
-
-
             // Write the changes to config
             this.Helper.WriteConfig(Config);
+            this.Monitor.Log($"{Game1.player.Name}: Changes saved to Mod config file", ProgramLogLevel);
         }
 
 
