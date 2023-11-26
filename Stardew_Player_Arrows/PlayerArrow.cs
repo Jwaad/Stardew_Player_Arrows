@@ -39,7 +39,7 @@ namespace PlayerArrows.Objects
         private float TextOffset = 0; // Distance text floats above arrow 
         public Texture2D DisplayTextTexture { get; private set; }
         public Color BorderColor { get; set; } = Color.Black;
-        public Color BodyColor { get; set; } = Color.DarkRed;
+        public Color BodyColor { get; set; } = Color.White;
         public float ArrowAngle { get; set; } = 0;
         public float Scale { get; set; } = 1f;
         public float LayerDepth { get; set; } = 0f;
@@ -50,7 +50,6 @@ namespace PlayerArrows.Objects
         private readonly long PlayerID;
         private int RandomSeed;
         Random Randomiser;
-        ModConfig Config;
 
         // Constructor, set initial Position and Angle. Also load textures here
         public PlayerArrow(Vector2 position, double angle, Texture2D arrowBody, Texture2D arrowBorder, long playerID, ModConfig config)
@@ -86,7 +85,7 @@ namespace PlayerArrows.Objects
                 float textX = Position.X - ((TextOffset + ArrowBody.Height) * (float)Math.Cos(ArrowAngle));
                 float textY = Position.Y - ((TextOffset + ArrowBody.Height) * (float)Math.Sin(ArrowAngle));
                 Vector2 textPosition = new Vector2(textX, textY);
-                e.SpriteBatch.Draw(DisplayTextTexture, textPosition, null, BodyColor * (float)Opacity, ArrowAngle - (float)(Math.PI / 2), TextOrigin, Scale, SpriteEffects.None, LayerDepth);
+                e.SpriteBatch.Draw(DisplayTextTexture, textPosition, null, Color.White * (float)Opacity, ArrowAngle - (float)(Math.PI / 2), TextOrigin, Scale, SpriteEffects.None, LayerDepth);
             }
         }
 
@@ -142,13 +141,13 @@ namespace PlayerArrows.Objects
             int stringHeight = (int)font.MeasureString(displayText).Y;
             RenderTarget2D renderTarget = new RenderTarget2D(graphicsDevice, stringWidth, stringHeight);
             graphicsDevice.SetRenderTarget(renderTarget);
-            graphicsDevice.Clear(Color.Transparent); //Color.Transparent
+            graphicsDevice.Clear(Color.White); // White background so we can read it
 
             // Start sprite batch and draw target
             SpriteBatch spriteBatch = new SpriteBatch(graphicsDevice);
 
             spriteBatch.Begin();
-            spriteBatch.DrawString(font, displayText, new Vector2(0, 0), Color.White);
+            spriteBatch.DrawString(font, displayText, new Vector2(0, 0), BodyColor);
             spriteBatch.End();
 
             //using (FileStream stream = new FileStream("mods/Stardew_Player_Arrows/assets/test.png", FileMode.Create, FileAccess.Write))
