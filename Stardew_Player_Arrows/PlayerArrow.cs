@@ -23,6 +23,7 @@ using System.Drawing.Imaging;
 using static System.Net.Mime.MediaTypeNames;
 using System.Xml.Linq;
 using StardewValley.BellsAndWhistles;
+using System.Threading;
 
 namespace PlayerArrows.Objects
 {
@@ -49,6 +50,7 @@ namespace PlayerArrows.Objects
         bool TextInitialised = false;
         private readonly long PlayerID;
         private int RandomSeed;
+        private ModConfig Config;
         Random Randomiser;
 
         // Constructor, set initial Position and Angle. Also load textures here
@@ -68,7 +70,7 @@ namespace PlayerArrows.Objects
             Position = position;
             ArrowAngle = (float)(angle); // Rotate 90 deg;
             Origin = new Vector2(ArrowBody.Width * Scale / 2, ArrowBody.Height * Scale); // Bottom center
-            
+            Config = config;
         }
 
         // Draw arrow
@@ -95,41 +97,41 @@ namespace PlayerArrows.Objects
             switch (colourPalette)
             {
                 case "Pastel":
-                {
-                    return new Color(
-                    Randomiser.Next(120, 256),
-                    Randomiser.Next(120, 256), 
-                    Randomiser.Next(120, 256), 
-                    255 );
-                }
+                    {
+                        return new Color(
+                        Randomiser.Next(120, 256),
+                        Randomiser.Next(120, 256),
+                        Randomiser.Next(120, 256),
+                        255);
+                    }
                 case "Dark":
-                {
-                    return new Color(
-                    Randomiser.Next(0, 150), 
-                    Randomiser.Next(0, 150),
-                    Randomiser.Next(0, 150),
-                    255);
-                }
+                    {
+                        return new Color(
+                        Randomiser.Next(0, 150),
+                        Randomiser.Next(0, 150),
+                        Randomiser.Next(0, 150),
+                        255);
+                    }
                 case "All":
-                {
-                    return new Color(
-                    Randomiser.Next(0, 256), 
-                    Randomiser.Next(0, 256),
-                    Randomiser.Next(0, 256), 
-                    255);
-                }
+                    {
+                        return new Color(
+                        Randomiser.Next(0, 256),
+                        Randomiser.Next(0, 256),
+                        Randomiser.Next(0, 256),
+                        255);
+                    }
                 case "Black":
                     {
                         return Color.Black;
                     }
                 default:
-                {
-                    return new Color(
-                    Randomiser.Next(0, 256), // R (0 to 255)
-                    Randomiser.Next(0, 256), // G (0 to 255)
-                    Randomiser.Next(0, 256), // B (0 to 255) 
-                    255);               // A (alpha, fully opaque)
-                }
+                    {
+                        return new Color(
+                        Randomiser.Next(0, 256), // R (0 to 255)
+                        Randomiser.Next(0, 256), // G (0 to 255)
+                        Randomiser.Next(0, 256), // B (0 to 255) 
+                        255);               // A (alpha, fully opaque)
+                    }
             }
         }
 
@@ -141,7 +143,7 @@ namespace PlayerArrows.Objects
             int stringHeight = (int)font.MeasureString(displayText).Y;
             RenderTarget2D renderTarget = new RenderTarget2D(graphicsDevice, stringWidth, stringHeight);
             graphicsDevice.SetRenderTarget(renderTarget);
-            graphicsDevice.Clear(Color.White); // White background so we can read it
+            graphicsDevice.Clear(Color.Transparent); 
 
             // Start sprite batch and draw target
             SpriteBatch spriteBatch = new SpriteBatch(graphicsDevice);
@@ -159,13 +161,113 @@ namespace PlayerArrows.Objects
                 stream.Seek(0, SeekOrigin.Begin);
                 DisplayTextTexture = Texture2D.FromStream(graphicsDevice, stream);
             }
+
             graphicsDevice.SetRenderTarget(null);
 
-            TextOrigin = new Vector2(DisplayTextTexture.Width * Scale / 2, DisplayTextTexture.Height * Scale); // bottom middle
+            // Add a border to the text based on colour palette
+            if (Config.ColourPalette == "Black" || Config.ColourPalette == "Dark")
+            {
+                DisplayTextTexture = AddBorder(Color.White, DisplayTextTexture);
+            }
+            else
+            {
+                DisplayTextTexture = AddBorder(Color.Black, DisplayTextTexture);
+            }
 
+
+            TextOrigin = new Vector2(DisplayTextTexture.Width * Scale / 2, DisplayTextTexture.Height * Scale); // bottom middle
             TextInitialised = true;
 
             return DisplayTextTexture;
         }
+
+
+        //add a border to our image
+        public Texture2D AddBorder(Color color, Texture2D texture, int thickness = 2)
+        {
+            // Get pixels of our texture, so we can overwrite it
+            Color[] pixels = new Color[texture.Width * texture.Height];
+            texture.GetData(pixels);
+
+            // Repeat the process to thicken the border
+            for (int layer = 0; layer < thickness; layer++)
+            {
+                // Keep list of which pixels have borders in them
+                bool[] borderPixels = new bool[texture.Width * texture.Height];
+
+                // Loop through all pixels, where there is a neighbour 
+                for (int y = 0; y < texture.Height; y++)
+                {
+                    for (int x = 0; x < texture.Width; x++)
+                    {   
+                        // Ignore pixels already containing text
+                        if (pixels[(y * texture.Width) + x] != Color.Transparent)
+                        {
+                            continue;
+                        }
+
+                        // Check each neighbour of this pixel
+                        List<List<int>> neighbours = GetNeighbours(x, y, texture.Width, texture.Height);
+                        
+                        // Loop through all 8 neighbouring pixels
+                        for (int n = 0; n < (neighbours.Count); n++)
+                        {
+                            int neighbourX = x + neighbours[n][0];
+                            int neighbourY = y + neighbours[n][1];
+
+                            // Check if neighbour is already assigned to in our array checklist
+                            if (borderPixels[(neighbourY * texture.Width) + neighbourX])
+                            {
+                                continue; // skip to next neighbour
+                            }
+                            
+                            Color neighbourPixel = pixels[(neighbourY * texture.Width) + neighbourX];
+                            // If any of the neighbours have a value in them, set this pixel black
+                            if (neighbourPixel != Color.Transparent)
+                            { 
+                                pixels[(y * texture.Width) + x] = color;
+                                borderPixels[(y * texture.Width) + x] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update texture
+            texture.SetData(pixels);
+
+            return texture;
+        }
+
+        // Using width and height of array, as well as position of element in array, get coords of all possible neighbours
+        public List<List<int>> GetNeighbours(int x, int y, int w, int h) 
+        {
+            List<List<int>> neighbours = new List<List<int>>
+            {
+                // Upper left
+                (x > 0 & y > 0) ? new List<int> { -1, -1 }: null,
+                // Upper middle
+                (y > 0) ? new List<int> { 0, -1 } : null,
+                // Upper right
+                (x < w & y > 0) ? new List<int> { 1, -1 } : null,
+                // Left
+                (x > 0) ? new List<int> { -1 , 0 } : null,
+                
+                // Right
+                (x < w - 1) ? new List<int> { 1 , 0 } : null,
+                // Lower left
+                (y < h - 1 & x > 0) ? new List<int> { -1, 1 } : null,
+                // Lower middle
+                (y < h - 1) ? new List<int> { 0, 1 } : null,
+                // Lower right
+                (y < h - 1 & x < w - 1) ? new List<int> { 1, 1 } : null
+            };
+            // Remove all nulls
+            neighbours.RemoveAll(innerList => innerList == null);
+
+            return neighbours;
+        }
     }
+
 }
