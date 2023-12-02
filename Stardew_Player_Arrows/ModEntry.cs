@@ -105,6 +105,18 @@ namespace PlayerArrows.Entry
                 fieldId: "NamesOnArrows"
             );
 
+            // add debug to config
+            configMenu.AddBoolOption(
+                mod: this.ModManifest,
+                name: () => "DrawBorders",
+                tooltip: () => "Disable to remove border around arrow labels",
+                getValue: () => Config.DrawBorders,
+                setValue: value => HandleFieldChange("DrawBorders", value),
+                fieldId: "DrawBorders"
+            );
+
+            
+
             // Add option to change how smoothness - performance ratio
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
@@ -206,6 +218,18 @@ namespace PlayerArrows.Entry
                     Config.NamesOnArrows = (bool)newValue;
                     break;
                 }
+                // Handle config option "Draw borders"
+                case "DrawBorders":
+                {
+                        // If the value didnt change, skip
+                        if (Config.DrawBorders == (bool)newValue)
+                        {
+                            return;
+                        }
+                        this.Monitor.Log($"{Game1.player.Name}: {fieldId} : Changed from {Config.Debug} To {newValue}", ProgramLogLevel);
+                        Config.DrawBorders = (bool)newValue;
+                        break;
+                 }
                 // Handle config option "RenderFPS"
                 case "RenderFPS":
                 {
@@ -313,8 +337,8 @@ namespace PlayerArrows.Entry
                 this.Monitor.Log($"{Game1.player.Name}: Has loaded into world", ProgramLogLevel);
                 AttachEventHandlers();
 
-                // TEMPORARY FOR TESTIONG PURPOSES
-                PlayerArrow testArrow = new(new(500, 500), 1f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
+                // TEMPORARY FOR TESTING PURPOSES
+                /*PlayerArrow testArrow = new(new(500, 500), 1f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
                 testArrow.SameMap = true;
                 testArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "THIS IS A TEST ARROW"); // Init display text
 
@@ -323,7 +347,7 @@ namespace PlayerArrows.Entry
                 testArrow2.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "TestArrow2"); // Init display text
 
                 PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID] = testArrow;
-                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID * 2] = testArrow2;
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID * 2] = testArrow2;*/
             }
         }
 
