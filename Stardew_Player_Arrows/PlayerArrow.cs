@@ -164,14 +164,17 @@ namespace PlayerArrows.Objects
 
             graphicsDevice.SetRenderTarget(null);
 
-            // Add a border to the text based on colour palette
-            if (Config.ColourPalette == "Black" || Config.ColourPalette == "Dark")
+            if (Config.DrawBorders)
             {
-                DisplayTextTexture = AddBorder(Color.White, DisplayTextTexture);
-            }
-            else
-            {
-                DisplayTextTexture = AddBorder(Color.Black, DisplayTextTexture);
+                // Add a border to the text based on colour palette
+                if (Config.ColourPalette == "Black" || Config.ColourPalette == "Dark")
+                {
+                    DisplayTextTexture = AddBorder(Color.White, DisplayTextTexture);
+                }
+                else
+                {
+                    DisplayTextTexture = AddBorder(Color.Black, DisplayTextTexture);
+                }
             }
 
 
