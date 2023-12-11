@@ -50,7 +50,9 @@ namespace PlayerArrows.Objects
         bool TextInitialised = false;
         private readonly long PlayerID;
         private int RandomSeed;
+        public string PlayerCurrentMap { get; set; } = "";
         private ModConfig Config;
+        public Vector2 TargetPos { get; set; } = new(); // Used to store a targets pos incase we dont want to update every loop
         Random Randomiser;
 
         // Constructor, set initial Position and Angle. Also load textures here

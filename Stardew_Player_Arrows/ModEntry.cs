@@ -22,6 +22,7 @@ using Color = Microsoft.Xna.Framework.Color;
 using System.Drawing.Imaging;
 using static System.Net.Mime.MediaTypeNames;
 using System.Xml.Linq;
+using StardewValley.TerrainFeatures;
 
 namespace PlayerArrows.Entry
 {
@@ -34,6 +35,7 @@ namespace PlayerArrows.Entry
         public Dictionary<long, Dictionary<long, PlayerArrow>> PlayersArrowsDict = new(); // This players list of arrows per player
         private Texture2D ArrowBody;
         private Texture2D ArrowBorder;
+        public Dictionary<string, List<string>> MapWarpLocations = new();
 
         /// <summary>The mod entry point, called after the mod is first loaded.</summary>
         /// <param name="helper">Provides simplified APIs for writing mods.</param>
@@ -285,6 +287,7 @@ namespace PlayerArrows.Entry
             this.Helper.Events.Display.RenderedWorld += OnWorldRender;
             this.Helper.Events.GameLoop.UpdateTicked += OnUpdateLoop;
             this.Helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnect;
+            this.Helper.Events.Player.Warped += OnPlayerWarp;
 
             EventHandlersAttached = true;
 
@@ -335,10 +338,12 @@ namespace PlayerArrows.Entry
             if (Config.Enabled)
             {
                 this.Monitor.Log($"{Game1.player.Name}: Has loaded into world", ProgramLogLevel);
+                MapWarpLocations = GenerateMapConnections();
+                this.Monitor.Log($"{Game1.player.Name}: computed warp locations", ProgramLogLevel);
                 AttachEventHandlers();
-
+/*
                 // TEMPORARY FOR TESTING PURPOSES
-                /*PlayerArrow testArrow = new(new(500, 500), 1f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
+                PlayerArrow testArrow = new(new(500, 500), 1f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
                 testArrow.SameMap = true;
                 testArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "THIS IS A TEST ARROW"); // Init display text
 
@@ -347,7 +352,8 @@ namespace PlayerArrows.Entry
                 testArrow2.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "TestArrow2"); // Init display text
 
                 PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID] = testArrow;
-                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID * 2] = testArrow2;*/
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID * 2] = testArrow2;
+*/
             }
         }
 
@@ -364,11 +370,17 @@ namespace PlayerArrows.Entry
             {
                 Vector2 arrowTarget;
 
-                // Sort based on same or diff maps
+                // Skip self
                 if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
                 {
-                    //Fixes player trying to add the newly joined player before they're fully connected. 
+                    // Fixes player trying to add players before the game has fully loaded. 
                     if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
+                    {
+                        continue;
+                    }
+
+                    // Fixes program trying to add players who havn't loaded and given a location themselves yet.
+                    if (farmer.currentLocation == null)
                     {
                         continue;
                     }
@@ -385,17 +397,29 @@ namespace PlayerArrows.Entry
 
                         this.Monitor.Log($"{Game1.player.Name}: Instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
                     }
-
+                    
                     // Sort players between same or different map
                     if (farmer.currentLocation == Game1.player.currentLocation)
                     {
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
-                        arrowTarget = farmer.position.Get() ;// TODO Location to point to in same map
+                        arrowTarget = farmer.position.Get() ;
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.Name;
                     }
                     else
                     {
+                        // If farmer just left the screen this player is on, or just loaded in, then calculate a path to them
+                        if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap || 
+                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos == new Vector2())
+                        {
+                            arrowTarget = FindTeleporterTile(farmer.currentLocation.Name);
+                        }
+                        else
+                        {
+                            // Dont calculate this every loop. Instead it should have already been calculated in warping event
+                            arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
+                        }
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = false;
-                        arrowTarget = new Vector2(0,0); // TODO Location to point to when different map
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.Name;
                     }
 
                     // Compute angle difference
@@ -406,7 +430,7 @@ namespace PlayerArrows.Entry
                     int arrowY = (int)((Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
                     Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
 
-                    // Check if player is visible in screen
+                    // Check if player is visible on screen
                     Microsoft.Xna.Framework.Rectangle player_box = farmer.GetBoundingBox();
                     xTile.Dimensions.Rectangle playerRect = new(player_box.X, player_box.Y, player_box.Width, player_box.Height);
                     bool targetOnScreen = Game1.viewport.Intersects(playerRect);
@@ -415,11 +439,34 @@ namespace PlayerArrows.Entry
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
                 }
             }
         }
 
-        // On peer discconect, remove them from arrow list
+        // Using the name of two maps, figure out which tile to point to from current map
+        private Vector2 FindTeleporterTile(string targetLocation)
+        {
+            return new Vector2();
+        }
+
+
+        // After we warp, find the tile pos for each farmer in our list
+        private void OnPlayerWarp(object sender, WarpedEventArgs e)
+        {
+            // Check which maps each players are in
+            foreach (Farmer farmer in Game1.getOnlineFarmers())
+            {
+                // Skip self
+                if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
+                {
+                    // Update pos of target tile, per player
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.Name);
+                }
+            }
+        }
+
+        // On peer discocnect, remove them from arrow list
         private void OnPeerDisconnect(object sender, PeerDisconnectedEventArgs e)
         {
             // Sometimes p1 world render happens before other players have loaded.
@@ -435,7 +482,7 @@ namespace PlayerArrows.Entry
             }
         }
 
-        //After world render, we will draw our arrows
+        // After world render, we will draw our arrows
         private void OnWorldRender(object sender, RenderedWorldEventArgs e)
         {
             // Draw to UI not to world
@@ -458,17 +505,48 @@ namespace PlayerArrows.Entry
                         {
                             continue;
                         }
-                        // TEMPORARILY DONT DRAW DIFF MAP ARROWS. UNTIL WE MAKE THE METHODS TO TRACK MAP LOCATIONS
-                        if (!arrow.SameMap) // TEMP
-                        {
-                            continue; // TEMP
-                        }
 
                         arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100; // update arrow opacity, incase it changed
                         arrow.DrawArrow(e, this.Config.NamesOnArrows);
                     }
                 }
             });
+        }
+
+        // Recursively loop through all map locations and create database for each map and its teleporters / neighbours
+        private Dictionary<string, List<string>> GenerateMapConnections()
+        {
+            Dictionary<string, List<string>> MapNeighbours = new();
+
+            // Get all game locations
+            IList<GameLocation> allLocations = Game1.locations;
+
+            Monitor.Log($"Update our list of locations and warps", ProgramLogLevel);
+
+            // Iterate through all maps
+            foreach (GameLocation location in allLocations)
+            {
+                string locationName = location.Name;
+                List<string> warpTargets= new();
+                string allWarps = "";
+
+                // Loop through all warp points in the map
+                foreach (Warp warpPoint in location.warps)
+                {
+                    // Get unique names amongst warp locations as a shortcut
+                    string warpTargetName = warpPoint.TargetName;
+                    if (!warpTargets.Contains(warpTargetName))
+                    {
+                        warpTargets.Add(warpTargetName);
+                        allWarps += warpTargetName + " ";
+                    }
+                }
+                // update our dict with location name and warp targets
+                Monitor.Log($"{locationName} {allWarps}", ProgramLogLevel);
+                MapNeighbours.Add(locationName, warpTargets);
+            }
+
+            return MapNeighbours;
         }
     }
 }
