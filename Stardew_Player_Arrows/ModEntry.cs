@@ -24,6 +24,7 @@ using static System.Net.Mime.MediaTypeNames;
 using System.Xml.Linq;
 using StardewValley.TerrainFeatures;
 using System.Linq;
+using System.Reflection;
 
 namespace PlayerArrows.Entry
 {
@@ -403,34 +404,37 @@ namespace PlayerArrows.Entry
                     {
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
                         arrowTarget = farmer.position.Get() ;
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.Name;
                     }
                     else
                     {
                         // If farmer just left the screen this player is on, or just loaded in, then calculate a path to them
-                        if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap || 
-                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos == new Vector2())
+                        // or When a farmer just spawns in, and is in a different map to our player
+                        if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap ||
+                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position == new Vector2(0, 0))
                         {
-                            arrowTarget = FindTeleporterTile(farmer.currentLocation.Name);
+                            // Update farmer path tracking once farmer leaves the map player is on
+                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.Name);
                         }
-                        else
-                        {
-                            // Dont calculate this every loop. Instead it should have already been calculated in warping event
-                            arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
-                        }
+                        // Dont calculate this every loop. Instead it should have already been calculated in warping event
+                        arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
+
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = false;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.Name;
                     }
 
+
+
                     // Compute angle difference
-                    double angle = Math.Atan2((arrowTarget.Y - (Game1.player.position.Get().Y + 25)), (arrowTarget.X - Game1.player.position.Get().X));
+                    double angle = Math.Atan2((arrowTarget.Y - (Game1.player.position.Get().Y)), (arrowTarget.X - Game1.player.position.Get().X));
 
                     // Set pos of arrow
                     int arrowX = (int)((Game1.viewport.Width / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2));
                     int arrowY = (int)((Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
                     Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
 
-                    // Check if player is visible on screen
+                    // Check if player is visible on screen // TODO ADAPT THIS FOR TILE TARGETS
                     Microsoft.Xna.Framework.Rectangle player_box = farmer.GetBoundingBox();
                     xTile.Dimensions.Rectangle playerRect = new(player_box.X, player_box.Y, player_box.Width, player_box.Height);
                     bool targetOnScreen = Game1.viewport.Intersects(playerRect);
@@ -439,7 +443,6 @@ namespace PlayerArrows.Entry
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
-                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
                 }
             }
         }
@@ -454,22 +457,29 @@ namespace PlayerArrows.Entry
             // Recurse through the map directions and find target map
             completedPaths = FindTargetMap(targetLocation, currentPath, completedPaths);
             
-            // Get path that crosses through least locations
-            int pathInd = completedPaths.Min(list => list.Count);
-            List<string> shortestPath = completedPaths[pathInd];
-
-            // Print out the fastest path for logs
-            string temp = "";
-            foreach (string path in shortestPath)
+            if (completedPaths.Count > 0)
             {
-                temp += path + " -> ";
-            }
-            Monitor.Log(temp, ProgramLogLevel);
+                // Get path that crosses through least locations
+                List<string> shortestPath = completedPaths.OrderBy(item => item.Count).First();
+                string currentLocationName = shortestPath[0];
+                string mapTargetName = shortestPath[1];
 
-            // Get tile based on where to warp to next
-            Vector2 temp2 = new Vector2();
-            temp2.X = 1000; temp2.Y = 1000;
-            return temp2;
+                // Find a warp in the next location in our path, to point to
+                IList<GameLocation> allLocations = Game1.locations;
+                GameLocation mapTarget = allLocations.FirstOrDefault(item => item.Name == currentLocationName);
+                foreach (Warp warp in mapTarget.warps)
+                {
+                    // Get tile based on where to warp to next
+                    if (warp.TargetName == mapTargetName)
+                    {
+                        // Use the first warp that connects to our target map, that we find.
+                        Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
+                        return tileTarget;
+                    }
+                }
+            }
+            // If our algorithm coundn't find a route somehow (likley due to mods) dont update tracking pos
+            return new Vector2();
         }
 
         // Take a parameter of all the previous maps we traversed through, and add on the next choice
@@ -493,7 +503,7 @@ namespace PlayerArrows.Entry
                     List<string> currentPathCopy = new List<string>(currentPath) { nextLocation };
                     completedPaths.Add(currentPathCopy);
                 }
-                // Map was not the location, so go into it's possible routes
+                // location was not the target, so go into it's possible routes
                 else
                 {
                     // Add copy so next loops arent effected
@@ -507,18 +517,24 @@ namespace PlayerArrows.Entry
         }
 
 
-        // After we warp, find the tile pos for each farmer in our list
+        // After player warps somewhere, update their tracking arrows with new positions of all parties.
         private void OnPlayerWarp(object sender, WarpedEventArgs e)
         {
             // Check which maps each players are in
-            foreach (Farmer farmer in Game1.getOnlineFarmers()) // TODO we should loop through existing arrows instead. to avoid issues
+            foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
             {
-                // Skip self
-                if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
+                // Skip farmers on same map
+                Farmer farmer = Game1.getFarmer(arrow.PlayerID);
+                if (farmer.currentLocation.Name == Game1.player.currentLocation.Name)
                 {
-                    // Update pos of target tile, per player
-                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.Name);
+                    continue;
                 }
+
+                // Update pos of target tile, per existing tracking arrow
+                Vector2 trackTarget = FindTeleporterTile(farmer.currentLocation.Name);
+
+                // Only overwrite target pos if track target didnt also default
+                arrow.TargetPos = trackTarget != new Vector2() ? trackTarget: arrow.TargetPos;
             }
         }
 
@@ -577,7 +593,7 @@ namespace PlayerArrows.Entry
             // Get all game locations
             IList<GameLocation> allLocations = Game1.locations;
 
-            Monitor.Log($"Update our list of locations and warps", ProgramLogLevel);
+            Monitor.Log($"Updating our list of locations and warps", ProgramLogLevel);
 
             // Iterate through all maps
             foreach (GameLocation location in allLocations)
@@ -598,7 +614,7 @@ namespace PlayerArrows.Entry
                     }
                 }
                 // update our dict with location name and warp targets
-                Monitor.Log($"{locationName} {allWarps}", ProgramLogLevel);
+                //Monitor.Log($"{locationName} {allWarps}", ProgramLogLevel);
                 MapNeighbours.Add(locationName, warpTargets);
             }
             

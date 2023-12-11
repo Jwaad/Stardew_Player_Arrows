@@ -48,7 +48,7 @@ namespace PlayerArrows.Objects
         public bool TargetOnScreen = false; // Store here so we can track if player is visible
         public float Opacity;
         bool TextInitialised = false;
-        private readonly long PlayerID;
+        public readonly long PlayerID;
         private int RandomSeed;
         public string PlayerCurrentMap { get; set; } = "";
         private ModConfig Config;
