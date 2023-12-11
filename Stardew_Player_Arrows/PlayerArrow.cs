@@ -64,7 +64,7 @@ namespace PlayerArrows.Objects
 
             // Derive seed from player ID, so everyone sees them as one colour
             PlayerID = playerID;
-            RandomSeed = int.Parse((playerID.ToString()).Substring(0, 5));
+            RandomSeed = int.Parse((PlayerID.ToString()).Substring(0, 5));
             Randomiser = new Random(RandomSeed);
             BodyColor = GenerateRandomColor(config.ColourPalette);
 

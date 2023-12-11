@@ -23,6 +23,7 @@ using System.Drawing.Imaging;
 using static System.Net.Mime.MediaTypeNames;
 using System.Xml.Linq;
 using StardewValley.TerrainFeatures;
+using System.Linq;
 
 namespace PlayerArrows.Entry
 {
@@ -159,7 +160,7 @@ namespace PlayerArrows.Entry
                "(NOTE: Changes will take effect one restart / world load)",
                getValue: () => Config.ColourPalette,
                setValue: value => HandleFieldChange("ColourPalette", value),
-               allowedValues: new string[] { "Pastel", "Dark", "All" },
+               allowedValues: new string[] { "Pastel", "Dark", "Black", "All" },
                fieldId: "ColourPalette"
            );
         }
@@ -303,7 +304,6 @@ namespace PlayerArrows.Entry
             // Only let splitscreen host attach and detach event handlers in split screen. This wont effect lan / internet
             if (Context.IsSplitScreen && !Context.IsMainPlayer)
             {
-
                 return;
             }
             if (!EventHandlersAttached)
@@ -444,10 +444,66 @@ namespace PlayerArrows.Entry
             }
         }
 
-        // Using the name of two maps, figure out which tile to point to from current map
+
+        // Using the name of target map and current player map, figure out which tile to point to from current map
         private Vector2 FindTeleporterTile(string targetLocation)
         {
-            return new Vector2();
+            List<string> currentPath = new List<string> { Game1.player.currentLocation.Name };
+            List<List<string>> completedPaths = new List<List<string>>();
+
+            // Recurse through the map directions and find target map
+            completedPaths = FindTargetMap(targetLocation, currentPath, completedPaths);
+            
+            // Get path that crosses through least locations
+            int pathInd = completedPaths.Min(list => list.Count);
+            List<string> shortestPath = completedPaths[pathInd];
+
+            // Print out the fastest path for logs
+            string temp = "";
+            foreach (string path in shortestPath)
+            {
+                temp += path + " -> ";
+            }
+            Monitor.Log(temp, ProgramLogLevel);
+
+            // Get tile based on where to warp to next
+            Vector2 temp2 = new Vector2();
+            temp2.X = 1000; temp2.Y = 1000;
+            return temp2;
+        }
+
+        // Take a parameter of all the previous maps we traversed through, and add on the next choice
+        private List<List<string>> FindTargetMap(string targetLocation, List<string> journey, List<List<string>> completedPaths)
+        {
+            List<string> currentPath = new List<string>(journey);
+            string currentMap = currentPath[^1];
+            
+            List<string> possibleMaps = MapWarpLocations[currentMap];
+            foreach (string nextLocation in possibleMaps)
+            {
+                // Dont recurse into any of the maps we just came through
+                if (currentPath.Contains(nextLocation))
+                { 
+                    continue; 
+                }
+                // We have found the location, but continue through all possiblities
+                else if (nextLocation == targetLocation)
+                {
+                    // Add copy so next loops arent effected
+                    List<string> currentPathCopy = new List<string>(currentPath) { nextLocation };
+                    completedPaths.Add(currentPathCopy);
+                }
+                // Map was not the location, so go into it's possible routes
+                else
+                {
+                    // Add copy so next loops arent effected
+                    List<string> currentPathCopy = new List<string>(currentPath){nextLocation};
+                    completedPaths = FindTargetMap(targetLocation, currentPathCopy, completedPaths);
+                }
+            }
+
+            // Hitting here means we've hit a dead end. So end.
+            return completedPaths;
         }
 
 
@@ -455,7 +511,7 @@ namespace PlayerArrows.Entry
         private void OnPlayerWarp(object sender, WarpedEventArgs e)
         {
             // Check which maps each players are in
-            foreach (Farmer farmer in Game1.getOnlineFarmers())
+            foreach (Farmer farmer in Game1.getOnlineFarmers()) // TODO we should loop through existing arrows instead. to avoid issues
             {
                 // Skip self
                 if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
@@ -527,7 +583,7 @@ namespace PlayerArrows.Entry
             foreach (GameLocation location in allLocations)
             {
                 string locationName = location.Name;
-                List<string> warpTargets= new();
+                List<string> warpTargets = new();
                 string allWarps = "";
 
                 // Loop through all warp points in the map
@@ -545,7 +601,7 @@ namespace PlayerArrows.Entry
                 Monitor.Log($"{locationName} {allWarps}", ProgramLogLevel);
                 MapNeighbours.Add(locationName, warpTargets);
             }
-
+            
             return MapNeighbours;
         }
     }
