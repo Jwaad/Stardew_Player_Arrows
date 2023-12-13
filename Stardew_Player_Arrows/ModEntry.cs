@@ -467,6 +467,8 @@ namespace PlayerArrows.Entry
                 // Find a warp in the next location in our path, to point to
                 IList<GameLocation> allLocations = Game1.locations;
                 GameLocation mapTarget = allLocations.FirstOrDefault(item => item.NameOrUniqueName == currentLocationName);
+                
+                // Check warps and see if tile is a warp
                 foreach (Warp warp in mapTarget.warps)
                 {
                     // Get tile based on where to warp to next
@@ -477,13 +479,36 @@ namespace PlayerArrows.Entry
                         return tileTarget;
                     }
                 }
+
+                // If tile isnt a warp, check doors
+                foreach (KeyValuePair<Microsoft.Xna.Framework.Point, string> door in mapTarget.doors.Pairs)
+                {
+                    Warp warpPoint = new();
+
+                    try
+                    {
+                        warpPoint = mapTarget.getWarpFromDoor(door.Key);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    // Get tile based on where to warp to next
+                    if (warpPoint.TargetName == mapTargetName)
+                    {
+                        // Use the first warp that connects to our target map, that we find.
+                        Vector2 tileTarget = new Vector2(warpPoint.X, warpPoint.Y) * Game1.tileSize;
+                        return tileTarget;
+                    }
+                }
             }
 
             // If our algorithm coundn't find a route somehow (likley due to mods) dont update tracking pos
             return new Vector2();
         }
 
-        // Take a parameter of all the previous maps we traversed through, and add on the next choice
+        // Find all possible routes to target location, by recusively running through all options
         private List<List<string>> FindTargetMap(string targetLocation, List<string> journey, List<List<string>> completedPaths)
         {
             List<string> currentPath = new List<string>(journey);
