@@ -340,6 +340,7 @@ namespace PlayerArrows.Entry
             {
                 this.Monitor.Log($"{Game1.player.Name}: Has loaded into world", ProgramLogLevel);
                 MapWarpLocations = GenerateMapConnections();
+
                 this.Monitor.Log($"{Game1.player.Name}: computed warp locations", ProgramLogLevel);
                 AttachEventHandlers();
 /*
@@ -405,7 +406,7 @@ namespace PlayerArrows.Entry
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
                         arrowTarget = farmer.position.Get() ;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.Name;
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
                     }
                     else
                     {
@@ -415,16 +416,14 @@ namespace PlayerArrows.Entry
                             PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position == new Vector2(0, 0))
                         {
                             // Update farmer path tracking once farmer leaves the map player is on
-                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.Name);
+                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
                         }
                         // Dont calculate this every loop. Instead it should have already been calculated in warping event
                         arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
 
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = false;
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.Name;
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
                     }
-
-
 
                     // Compute angle difference
                     double angle = Math.Atan2((arrowTarget.Y - (Game1.player.position.Get().Y)), (arrowTarget.X - Game1.player.position.Get().X));
@@ -451,12 +450,13 @@ namespace PlayerArrows.Entry
         // Using the name of target map and current player map, figure out which tile to point to from current map
         private Vector2 FindTeleporterTile(string targetLocation)
         {
-            List<string> currentPath = new List<string> { Game1.player.currentLocation.Name };
+            List<string> currentPath = new List<string> { Game1.player.currentLocation.NameOrUniqueName };
             List<List<string>> completedPaths = new List<List<string>>();
 
             // Recurse through the map directions and find target map
             completedPaths = FindTargetMap(targetLocation, currentPath, completedPaths);
-            
+            Monitor.Log($"{Game1.player.Name}: Found {completedPaths.Count} possible routes from {Game1.player.currentLocation.NameOrUniqueName} to {targetLocation}", ProgramLogLevel);
+
             if (completedPaths.Count > 0)
             {
                 // Get path that crosses through least locations
@@ -466,7 +466,7 @@ namespace PlayerArrows.Entry
 
                 // Find a warp in the next location in our path, to point to
                 IList<GameLocation> allLocations = Game1.locations;
-                GameLocation mapTarget = allLocations.FirstOrDefault(item => item.Name == currentLocationName);
+                GameLocation mapTarget = allLocations.FirstOrDefault(item => item.NameOrUniqueName == currentLocationName);
                 foreach (Warp warp in mapTarget.warps)
                 {
                     // Get tile based on where to warp to next
@@ -478,6 +478,7 @@ namespace PlayerArrows.Entry
                     }
                 }
             }
+
             // If our algorithm coundn't find a route somehow (likley due to mods) dont update tracking pos
             return new Vector2();
         }
@@ -487,21 +488,35 @@ namespace PlayerArrows.Entry
         {
             List<string> currentPath = new List<string>(journey);
             string currentMap = currentPath[^1];
-            
+
+            // If we encounter a map we dont know, try updating our map database, 
+            if (!MapWarpLocations.ContainsKey(currentMap))
+            {
+                Monitor.Log("Map not founded in database. Attempting to rebuild database...", ProgramLogLevel);
+                MapWarpLocations = GenerateMapConnections();
+
+                // if it still doesnt work.just skip
+                if (!MapWarpLocations.ContainsKey(currentMap))
+                {
+                    Monitor.Log("Map was no found in rebuild. Skipping...", ProgramLogLevel);
+                    return completedPaths;
+                }
+            }
+
             List<string> possibleMaps = MapWarpLocations[currentMap];
             foreach (string nextLocation in possibleMaps)
             {
-                // Dont recurse into any of the maps we just came through
-                if (currentPath.Contains(nextLocation))
-                { 
-                    continue; 
-                }
                 // We have found the location, but continue through all possiblities
-                else if (nextLocation == targetLocation)
+                if (nextLocation == targetLocation)
                 {
                     // Add copy so next loops arent effected
                     List<string> currentPathCopy = new List<string>(currentPath) { nextLocation };
                     completedPaths.Add(currentPathCopy);
+                }
+                // Dont recurse into any of the maps we just came through, (unless it's the target location)
+                else if (currentPath.Contains(nextLocation))
+                { 
+                    continue; 
                 }
                 // location was not the target, so go into it's possible routes
                 else
@@ -525,13 +540,13 @@ namespace PlayerArrows.Entry
             {
                 // Skip farmers on same map
                 Farmer farmer = Game1.getFarmer(arrow.PlayerID);
-                if (farmer.currentLocation.Name == Game1.player.currentLocation.Name)
+                if (farmer.currentLocation.NameOrUniqueName == Game1.player.currentLocation.NameOrUniqueName)
                 {
                     continue;
                 }
 
                 // Update pos of target tile, per existing tracking arrow
-                Vector2 trackTarget = FindTeleporterTile(farmer.currentLocation.Name);
+                Vector2 trackTarget = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
 
                 // Only overwrite target pos if track target didnt also default
                 arrow.TargetPos = trackTarget != new Vector2() ? trackTarget: arrow.TargetPos;
@@ -598,7 +613,7 @@ namespace PlayerArrows.Entry
             // Iterate through all maps
             foreach (GameLocation location in allLocations)
             {
-                string locationName = location.Name;
+                string locationName = location.NameOrUniqueName;
                 List<string> warpTargets = new();
                 string allWarps = "";
 
@@ -613,8 +628,34 @@ namespace PlayerArrows.Entry
                         allWarps += warpTargetName + " ";
                     }
                 }
+
+                // Loop through all buildings in the map
+                foreach (KeyValuePair<Microsoft.Xna.Framework.Point, string> door in location.doors.Pairs)
+                {
+                    Warp warpPoint = new();
+
+                    try
+                    {
+                        warpPoint = location.getWarpFromDoor(door.Key);
+                    }
+                    catch
+                    {
+                        Monitor.Log($"Door name: {door.Value}, in location: {location.NameOrUniqueName} failed", ProgramLogLevel);
+                        continue;
+                    }
+
+                    // Get unique names amongst warp locations as a shortcut
+                    string warpTargetName = warpPoint.TargetName;
+                    if (!warpTargets.Contains(warpTargetName))
+                    {
+                        warpTargets.Add(warpTargetName);
+                        allWarps += warpTargetName + " ";
+                    }
+
+                }
+
                 // update our dict with location name and warp targets
-                //Monitor.Log($"{locationName} {allWarps}", ProgramLogLevel);
+                Monitor.Log($"Location: {locationName} - Warps: {allWarps}", ProgramLogLevel);
                 MapNeighbours.Add(locationName, warpTargets);
             }
             
