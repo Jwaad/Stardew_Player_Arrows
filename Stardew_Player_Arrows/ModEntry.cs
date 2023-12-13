@@ -475,7 +475,7 @@ namespace PlayerArrows.Entry
                     if (warp.TargetName == mapTargetName)
                     {
                         // Use the first warp that connects to our target map, that we find.
-                        Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
+                        Vector2 tileTarget = new Vector2(warp.X + 0.5f, warp.Y + 0.5f) * Game1.tileSize;
                         return tileTarget;
                     }
                 }
@@ -498,7 +498,7 @@ namespace PlayerArrows.Entry
                     if (warpPoint.TargetName == mapTargetName)
                     {
                         // Use the first warp that connects to our target map, that we find.
-                        Vector2 tileTarget = new Vector2(warpPoint.X, warpPoint.Y) * Game1.tileSize;
+                        Vector2 tileTarget = new Vector2(warpPoint.X + 0.5f, warpPoint.Y + 0.5f) * Game1.tileSize;
                         return tileTarget;
                     }
                 }
