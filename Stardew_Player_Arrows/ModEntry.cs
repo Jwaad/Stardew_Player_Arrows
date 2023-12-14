@@ -317,6 +317,7 @@ namespace PlayerArrows.Entry
             this.Helper.Events.Display.RenderedWorld -= OnWorldRender;
             this.Helper.Events.GameLoop.UpdateTicked -= OnUpdateLoop;
             this.Helper.Events.Multiplayer.PeerDisconnected -= OnPeerDisconnect;
+            this.Helper.Events.Player.Warped -= OnPlayerWarp;
 
             EventHandlersAttached = false;
 
@@ -361,6 +362,7 @@ namespace PlayerArrows.Entry
 
         private void OnUpdateLoop(object sender, UpdateTickedEventArgs e)
         {
+
             // Limit updates to FPS specified in config
             if (!e.IsMultipleOf((uint)(60 / Config.PlayerLocationUpdateFPS)))
             {
@@ -400,14 +402,16 @@ namespace PlayerArrows.Entry
                         this.Monitor.Log($"{Game1.player.Name}: Instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
                     }
                     
-                    // Sort players between same or different map
+                    // Target entity in same map
                     if (farmer.currentLocation == Game1.player.currentLocation)
                     {
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
                         arrowTarget = farmer.position.Get() ;
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = farmer.GetBoundingBox();
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
                     }
+                    // Target entity in other maps
                     else
                     {
                         // If farmer just left the screen this player is on, or just loaded in, then calculate a path to them
@@ -417,10 +421,18 @@ namespace PlayerArrows.Entry
                         {
                             // Update farmer path tracking once farmer leaves the map player is on
                             PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
-                        }
+                        }   
                         // Dont calculate this every loop. Instead it should have already been calculated in warping event
                         arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
 
+                        // Create a rect for our tile. NOT SURE HOW GOOD IT IS TO DO THIS EVERY UPODATE LOOP but -(=.=)-
+                        Microsoft.Xna.Framework.Rectangle tileRect = new Microsoft.Xna.Framework.Rectangle(
+                            (int)arrowTarget.X,
+                            (int)arrowTarget.Y,
+                            Game1.tileSize,
+                            Game1.tileSize);
+
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = tileRect;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = false;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
                     }
@@ -433,15 +445,24 @@ namespace PlayerArrows.Entry
                     int arrowY = (int)((Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
                     Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
 
-                    // Check if player is visible on screen // TODO ADAPT THIS FOR TILE TARGETS
-                    Microsoft.Xna.Framework.Rectangle player_box = farmer.GetBoundingBox();
-                    xTile.Dimensions.Rectangle playerRect = new(player_box.X, player_box.Y, player_box.Width, player_box.Height);
-                    bool targetOnScreen = Game1.viewport.Intersects(playerRect);
+                    // Move arrow by difference between screen center and player center
+                    Microsoft.Xna.Framework.Rectangle playerRect = Game1.player.GetBoundingBox();
+                    Vector2 playerCenter = new(Game1.player.position.X + playerRect.Width/2,
+                                                Game1.player.position.Y + playerRect.Height / 2); // im sure there's a player center parameter somewhere, im just too lazy to find it
+                    Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width / 2,
+                                                Game1.viewport.Y + Game1.viewport.Height / 2);
+                    arrowPosition = arrowPosition + (playerCenter - viewportCenter);
+
+                    // Check if target is onscreen. convert its rect to right format.
+                    Microsoft.Xna.Framework.Rectangle targetRectXNA = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect;
+                    xTile.Dimensions.Rectangle targetRect = new(targetRectXNA.X, targetRectXNA.Y, targetRectXNA.Width, targetRectXNA.Height);
+                    bool targetOnScreen = Game1.viewport.Intersects(targetRect);
 
                     // Update player arrows
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
+
                 }
             }
         }
@@ -475,7 +496,7 @@ namespace PlayerArrows.Entry
                     if (warp.TargetName == mapTargetName)
                     {
                         // Use the first warp that connects to our target map, that we find.
-                        Vector2 tileTarget = new Vector2(warp.X + 0.5f, warp.Y + 0.5f) * Game1.tileSize;
+                        Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
                         return tileTarget;
                     }
                 }
@@ -498,7 +519,7 @@ namespace PlayerArrows.Entry
                     if (warpPoint.TargetName == mapTargetName)
                     {
                         // Use the first warp that connects to our target map, that we find.
-                        Vector2 tileTarget = new Vector2(warpPoint.X + 0.5f, warpPoint.Y + 0.5f) * Game1.tileSize;
+                        Vector2 tileTarget = new Vector2(warpPoint.X, warpPoint.Y) * Game1.tileSize;
                         return tileTarget;
                     }
                 }
@@ -538,12 +559,12 @@ namespace PlayerArrows.Entry
                     List<string> currentPathCopy = new List<string>(currentPath) { nextLocation };
                     completedPaths.Add(currentPathCopy);
                 }
-                // Dont recurse into any of the maps we just came through, (unless it's the target location)
+                // Dont recurse into any of the maps we just came through
                 else if (currentPath.Contains(nextLocation))
                 { 
                     continue; 
                 }
-                // location was not the target, so go into it's possible routes
+                // location was not the target and is new, so go into it's possible routes
                 else
                 {
                     // Add copy so next loops arent effected
@@ -552,10 +573,10 @@ namespace PlayerArrows.Entry
                 }
             }
 
-            // Hitting here means we've hit a dead end. So end.
+            // Hitting here means we've hit a dead end. So end chain.
             return completedPaths;
         }
-
+         
 
         // After player warps somewhere, update their tracking arrows with new positions of all parties.
         private void OnPlayerWarp(object sender, WarpedEventArgs e)
@@ -586,7 +607,7 @@ namespace PlayerArrows.Entry
             {
                 return;
             }
-
+             
             if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(e.Peer.PlayerID))
             {
                 PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Remove(e.Peer.PlayerID);
@@ -597,32 +618,43 @@ namespace PlayerArrows.Entry
         // After world render, we will draw our arrows
         private void OnWorldRender(object sender, RenderedWorldEventArgs e)
         {
-            // Draw to UI not to world
-            Game1.InUIMode(() =>
+           
+            // Sometimes p1 world render happens before other players have loaded.
+            if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
             {
-                // Sometimes p1 world render happens before other players have loaded.
-                if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
-                {
-                    return;
-                }
+                return;
+            }
 
-                if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Count > 0)
-                {
+            if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Count > 0)
+            {
                     
-                    // Draw the stored arrows
-                    foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
+                // Draw the stored arrows
+                foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
+                {
+                    // Dont draw arrow if you can see the target
+                    if (arrow.TargetOnScreen)
                     {
-                        // Dont draw arrow if you can see the target
-                        if (arrow.TargetOnScreen)
-                        {
-                            continue;
-                        }
+                        // TEMP
+                        Microsoft.Xna.Framework.Rectangle rect = arrow.TargetRect;
+                        rect.X -= Game1.viewport.X;
+                        rect.Y -= Game1.viewport.Y;
 
-                        arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100; // update arrow opacity, incase it changed
-                        arrow.DrawArrow(e, this.Config.NamesOnArrows);
+                        e.SpriteBatch.Draw(Game1.staminaRect, rect, Color.Red);
+
+                        continue;
                     }
+
+                    // update arrow opacity, incase it changed
+                    arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100;
+
+                    // Draw to UI not to world
+                    Game1.InUIMode(() =>
+                    {
+                        arrow.DrawArrow(e, this.Config.NamesOnArrows);
+                    });
                 }
-            });
+            
+            };
         }
 
         // Recursively loop through all map locations and create database for each map and its teleporters / neighbours
@@ -680,7 +712,7 @@ namespace PlayerArrows.Entry
                 }
 
                 // update our dict with location name and warp targets
-                Monitor.Log($"Location: {locationName} - Warps: {allWarps}", ProgramLogLevel);
+                //Monitor.Log($"Location: {locationName} - Warps: {allWarps}", ProgramLogLevel);
                 MapNeighbours.Add(locationName, warpTargets);
             }
             
