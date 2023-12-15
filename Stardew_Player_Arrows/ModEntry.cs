@@ -446,12 +446,10 @@ namespace PlayerArrows.Entry
                     Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
 
                     // Move arrow by difference between screen center and player center
-                    Microsoft.Xna.Framework.Rectangle playerRect = Game1.player.GetBoundingBox();
-                    Vector2 playerCenter = new(Game1.player.position.X + playerRect.Width/2,
-                                                Game1.player.position.Y + playerRect.Height / 2); // im sure there's a player center parameter somewhere, im just too lazy to find it
-                    Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width / 2,
-                                                Game1.viewport.Y + Game1.viewport.Height / 2);
-                    arrowPosition = arrowPosition + (playerCenter - viewportCenter);
+                    Microsoft.Xna.Framework.Point playerRect = Game1.player.GetBoundingBox().Center;
+                    Vector2 playerCenter = new(playerRect.X, playerRect.Y);
+                    Vector2 viewportCenter = new(Game1.viewportCenter.X, Game1.viewportCenter.Y);
+                    arrowPosition += (playerCenter - viewportCenter);
 
                     // Check if target is onscreen. convert its rect to right format.
                     Microsoft.Xna.Framework.Rectangle targetRectXNA = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect;
@@ -473,6 +471,7 @@ namespace PlayerArrows.Entry
         {
             List<string> currentPath = new List<string> { Game1.player.currentLocation.NameOrUniqueName };
             List<List<string>> completedPaths = new List<List<string>>();
+            List<Warp> teleportLocations = new();
 
             // Recurse through the map directions and find target map
             completedPaths = FindTargetMap(targetLocation, currentPath, completedPaths);
@@ -488,46 +487,72 @@ namespace PlayerArrows.Entry
                 // Find a warp in the next location in our path, to point to
                 IList<GameLocation> allLocations = Game1.locations;
                 GameLocation mapTarget = allLocations.FirstOrDefault(item => item.NameOrUniqueName == currentLocationName);
-                
-                // Check warps and see if tile is a warp
+
+                List<Warp> allWarps = new();
+
+                // colate all our warps, by looping through warps and doors
                 foreach (Warp warp in mapTarget.warps)
                 {
-                    // Get tile based on where to warp to next
-                    if (warp.TargetName == mapTargetName)
+                    bool passable = mapTarget.isTileLocationTotallyClearAndPlaceable(warp.X, warp.Y);
+                    bool onMap = mapTarget.isTileOnMap(warp.X, warp.Y);
+
+                    // Filter out strange on map, but unpassable teleporters
+                    if (onMap && !passable)
                     {
-                        // Use the first warp that connects to our target map, that we find.
-                        Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
-                        return tileTarget;
+                        continue;
                     }
+
+                    allWarps.Add(warp);
                 }
 
-                // If tile isnt a warp, check doors
+                // Add doors to warps
                 foreach (KeyValuePair<Microsoft.Xna.Framework.Point, string> door in mapTarget.doors.Pairs)
                 {
-                    Warp warpPoint = new();
+                    Warp warp = new();
 
+                    // A couple doors are a bit buggy, so just skip those for now
                     try
                     {
-                        warpPoint = mapTarget.getWarpFromDoor(door.Key);
+                        warp = mapTarget.getWarpFromDoor(door.Key);
                     }
                     catch
                     {
                         continue;
                     }
 
-                    // Get tile based on where to warp to next
-                    if (warpPoint.TargetName == mapTargetName)
+                    allWarps.Add(warp);
+                }
+
+                // Check our warps, and see if they lead to our target
+                foreach (Warp warp in allWarps)
+                {
+                    if (warp.TargetName == mapTargetName)
                     {
-                        // Use the first warp that connects to our target map, that we find.
-                        Vector2 tileTarget = new Vector2(warpPoint.X, warpPoint.Y) * Game1.tileSize;
-                        return tileTarget;
+                        teleportLocations.Add(warp);
                     }
+                }
+
+                if (teleportLocations.Count > 0)
+                {
+                    Monitor.Log($"Found {teleportLocations.Count} teleporters", ProgramLogLevel);
+
+                    foreach (Warp tele in teleportLocations)
+                    {
+                        Location location = new(tele.X, tele.Y);
+                        Monitor.Log($"{Game1.player.Name}: Teleporter at: {location * Game1.tileSize}", ProgramLogLevel);
+
+                    }
+                    // TODO change this to closest target instead maybe
+                    Warp warp = teleportLocations[0];
+
+                    Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
+                    return tileTarget;
                 }
             }
 
             // If our algorithm coundn't find a route somehow (likley due to mods) dont update tracking pos
             return new Vector2();
-        }
+          }
 
         // Find all possible routes to target location, by recusively running through all options
         private List<List<string>> FindTargetMap(string targetLocation, List<string> journey, List<List<string>> completedPaths)
