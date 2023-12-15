@@ -451,10 +451,18 @@ namespace PlayerArrows.Entry
                     Vector2 viewportCenter = new(Game1.viewportCenter.X, Game1.viewportCenter.Y);
                     arrowPosition += (playerCenter - viewportCenter);
 
-                    // Check if target is onscreen. convert its rect to right format.
+                    // Check if target is onscreen.
+                    // convert its rect to right format.  TODO this conversion should be done at target calc, not here
                     Microsoft.Xna.Framework.Rectangle targetRectXNA = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect;
                     xTile.Dimensions.Rectangle targetRect = new(targetRectXNA.X, targetRectXNA.Y, targetRectXNA.Width, targetRectXNA.Height);
-                    bool targetOnScreen = Game1.viewport.Intersects(targetRect);
+
+                    // Enlarge viewport to collide with teleports slightly off screen
+                    xTile.Dimensions.Rectangle myViewport = new (Game1.viewport);
+                    myViewport.X -= 10;
+                    myViewport.Y -= 10;
+                    myViewport.Width += 20;
+                    myViewport.Height += 20;
+                    bool targetOnScreen = myViewport.Intersects(targetRect);
 
                     // Update player arrows
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
