@@ -446,10 +446,12 @@ namespace PlayerArrows.Entry
                     Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
 
                     // Move arrow by difference between screen center and player center
-                    Microsoft.Xna.Framework.Point playerRect = Game1.player.GetBoundingBox().Center;
+                    Microsoft.Xna.Framework.Rectangle pRect = Game1.player.GetBoundingBox();
+                    Microsoft.Xna.Framework.Point playerRect = pRect.Center;
                     Vector2 playerCenter = new(playerRect.X, playerRect.Y);
-                    Vector2 viewportCenter = new(Game1.viewportCenter.X, Game1.viewportCenter.Y);
-                    arrowPosition += (playerCenter - viewportCenter);
+                    // Some reason the built in viewport center always == player center
+                    Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width/2, Game1.viewport.Y + Game1.viewport.Height / 2);
+                    arrowPosition = arrowPosition + (playerCenter - viewportCenter);
 
                     // Check if target is onscreen.
                     // convert its rect to right format.  TODO this conversion should be done at target calc, not here
@@ -667,13 +669,6 @@ namespace PlayerArrows.Entry
                     // Dont draw arrow if you can see the target
                     if (arrow.TargetOnScreen)
                     {
-                        // TEMP
-                        Microsoft.Xna.Framework.Rectangle rect = arrow.TargetRect;
-                        rect.X -= Game1.viewport.X;
-                        rect.Y -= Game1.viewport.Y;
-
-                        e.SpriteBatch.Draw(Game1.staminaRect, rect, Color.Red);
-
                         continue;
                     }
 
