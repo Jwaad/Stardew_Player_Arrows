@@ -120,7 +120,6 @@ namespace PlayerArrows.Entry
             );
 
             
-
             // Add option to change how smoothness - performance ratio
             configMenu.AddNumberOption(
                 mod: this.ModManifest,
@@ -312,6 +311,7 @@ namespace PlayerArrows.Entry
                 this.Monitor.Log($"{Game1.player.Name}: Tried to detach event handlers, but they're already detached", LogLevel.Warn);
                 return;
             }
+
             // Detach Handlers
             this.Helper.Events.GameLoop.ReturnedToTitle -= OnQuitGame;
             this.Helper.Events.Display.RenderedWorld -= OnWorldRender;
@@ -344,19 +344,7 @@ namespace PlayerArrows.Entry
 
                 this.Monitor.Log($"{Game1.player.Name}: computed warp locations", ProgramLogLevel);
                 AttachEventHandlers();
-/*
-                // TEMPORARY FOR TESTING PURPOSES
-                PlayerArrow testArrow = new(new(500, 500), 1f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
-                testArrow.SameMap = true;
-                testArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "THIS IS A TEST ARROW"); // Init display text
 
-                PlayerArrow testArrow2 = new(new(1000, 100), 2f, ArrowBody, ArrowBorder, Game1.player.UniqueMultiplayerID, Config);
-                testArrow2.SameMap = true;
-                testArrow2.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, "TestArrow2"); // Init display text
-
-                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID] = testArrow;
-                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][Game1.player.UniqueMultiplayerID * 2] = testArrow2;
-*/
             }
         }
 
@@ -475,6 +463,77 @@ namespace PlayerArrows.Entry
             }
         }
 
+        // After player warps somewhere, update their tracking arrows with new positions of all parties.
+        private void OnPlayerWarp(object sender, WarpedEventArgs e)
+        {
+            // Check which maps each players are in
+            foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
+            {
+                // Skip farmers on same map
+                Farmer farmer = Game1.getFarmer(arrow.PlayerID);
+                if (farmer.currentLocation.NameOrUniqueName == Game1.player.currentLocation.NameOrUniqueName)
+                {
+                    continue;
+                }
+
+                // Update pos of target tile, per existing tracking arrow
+                Vector2 trackTarget = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
+
+                // Only overwrite target pos if track target didnt also default
+                arrow.TargetPos = trackTarget != new Vector2() ? trackTarget: arrow.TargetPos;
+            }
+        }
+
+        // On peer discocnect, remove them from arrow list
+        private void OnPeerDisconnect(object sender, PeerDisconnectedEventArgs e)
+        {
+            // Sometimes p1 world render happens before other players have loaded.
+            if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
+            {
+                return;
+            }
+             
+            if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(e.Peer.PlayerID))
+            {
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Remove(e.Peer.PlayerID);
+                this.Monitor.Log($"{Game1.player.Name}: Removed player arrow, target: {e.Peer.PlayerID}", ProgramLogLevel);
+            }
+        }
+
+        // After world render, we will draw our arrows
+        private void OnWorldRender(object sender, RenderedWorldEventArgs e)
+        {
+           
+            // Sometimes p1 world render happens before other players have loaded.
+            if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
+            {
+                return;
+            }
+
+            if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Count > 0)
+            {
+                    
+                // Draw the stored arrows
+                foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
+                {
+                    // Dont draw arrow if you can see the target
+                    if (arrow.TargetOnScreen)
+                    {
+                        continue;
+                    }
+
+                    // update arrow opacity, incase it changed
+                    arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100;
+
+                    // Draw to UI not to world
+                    Game1.InUIMode(() =>
+                    {
+                        arrow.DrawArrow(e, this.Config.NamesOnArrows);
+                    });
+                }
+            
+            };
+        }
 
         // Using the name of target map and current player map, figure out which tile to point to from current map
         private Vector2 FindTeleporterTile(string targetLocation)
@@ -564,6 +623,7 @@ namespace PlayerArrows.Entry
             return new Vector2();
           }
 
+
         // Find all possible routes to target location, by recusively running through all options
         private List<List<string>> FindTargetMap(string targetLocation, List<string> journey, List<List<string>> completedPaths)
         {
@@ -612,78 +672,6 @@ namespace PlayerArrows.Entry
             return completedPaths;
         }
          
-
-        // After player warps somewhere, update their tracking arrows with new positions of all parties.
-        private void OnPlayerWarp(object sender, WarpedEventArgs e)
-        {
-            // Check which maps each players are in
-            foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
-            {
-                // Skip farmers on same map
-                Farmer farmer = Game1.getFarmer(arrow.PlayerID);
-                if (farmer.currentLocation.NameOrUniqueName == Game1.player.currentLocation.NameOrUniqueName)
-                {
-                    continue;
-                }
-
-                // Update pos of target tile, per existing tracking arrow
-                Vector2 trackTarget = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
-
-                // Only overwrite target pos if track target didnt also default
-                arrow.TargetPos = trackTarget != new Vector2() ? trackTarget: arrow.TargetPos;
-            }
-        }
-
-        // On peer discocnect, remove them from arrow list
-        private void OnPeerDisconnect(object sender, PeerDisconnectedEventArgs e)
-        {
-            // Sometimes p1 world render happens before other players have loaded.
-            if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
-            {
-                return;
-            }
-             
-            if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(e.Peer.PlayerID))
-            {
-                PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Remove(e.Peer.PlayerID);
-                this.Monitor.Log($"{Game1.player.Name}: Removed player arrow, target: {e.Peer.PlayerID}", ProgramLogLevel);
-            }
-        }
-
-        // After world render, we will draw our arrows
-        private void OnWorldRender(object sender, RenderedWorldEventArgs e)
-        {
-           
-            // Sometimes p1 world render happens before other players have loaded.
-            if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
-            {
-                return;
-            }
-
-            if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Count > 0)
-            {
-                    
-                // Draw the stored arrows
-                foreach (PlayerArrow arrow in PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Values)
-                {
-                    // Dont draw arrow if you can see the target
-                    if (arrow.TargetOnScreen)
-                    {
-                        continue;
-                    }
-
-                    // update arrow opacity, incase it changed
-                    arrow.Opacity = (float)(this.Config.ArrowOpacity) / 100;
-
-                    // Draw to UI not to world
-                    Game1.InUIMode(() =>
-                    {
-                        arrow.DrawArrow(e, this.Config.NamesOnArrows);
-                    });
-                }
-            
-            };
-        }
 
         // Recursively loop through all map locations and create database for each map and its teleporters / neighbours
         private Dictionary<string, List<string>> GenerateMapConnections()
