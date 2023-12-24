@@ -36,7 +36,7 @@ namespace PlayerArrows.Objects
         public Vector2 Position { get; set; } = new Vector2(0, 0);
         public Vector2 Origin { get; private set; }
         public Vector2 TextOrigin { get; private set; }
-        public Rectangle TargetRect { get; set; }
+        public xTile.Dimensions.Rectangle TargetRect { get; set; }
         private readonly Texture2D ArrowBorder;
         private readonly Texture2D ArrowBody;
         private float TextOffset = 0; // Distance text floats above arrow 
