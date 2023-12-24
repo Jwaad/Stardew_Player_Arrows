@@ -157,7 +157,7 @@ namespace PlayerArrows.Entry
                "Dark -> RBG values of 0 - 120 \n" +
                "Black -> All arrows will be 0,0,0 \n" +
                "All (Default) -> 0 - 255 \n " +
-               "(NOTE: Changes will take effect one restart / world load)",
+               "(NOTE: Changes will take effect on restart / world load)",
                getValue: () => Config.ColourPalette,
                setValue: value => HandleFieldChange("ColourPalette", value),
                allowedValues: new string[] { "Pastel", "Dark", "Black", "All" },
@@ -351,7 +351,7 @@ namespace PlayerArrows.Entry
         private void OnUpdateLoop(object sender, UpdateTickedEventArgs e)
         {
 
-            // Limit updates to FPS specified in config
+            // Limit updates to arrows as specified in config
             if (!e.IsMultipleOf((uint)(60 / Config.PlayerLocationUpdateFPS)))
             {
                 return;
@@ -389,12 +389,12 @@ namespace PlayerArrows.Entry
 
                         this.Monitor.Log($"{Game1.player.Name}: Instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
                     }
-                    
+
                     // Target entity in same map
                     if (farmer.currentLocation == Game1.player.currentLocation)
                     {
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
-                        arrowTarget = farmer.position.Get() ;
+                        arrowTarget = farmer.position.Get();
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = farmer.GetBoundingBox();
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
@@ -409,9 +409,10 @@ namespace PlayerArrows.Entry
                         {
                             // Update farmer path tracking once farmer leaves the map player is on
                             PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
-                        }   
+                        }
                         // Dont calculate this every loop. Instead it should have already been calculated in warping event
                         arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
+
 
                         // Create a rect for our tile. NOT SURE HOW GOOD IT IS TO DO THIS EVERY UPODATE LOOP but -(=.=)-
                         Microsoft.Xna.Framework.Rectangle tileRect = new Microsoft.Xna.Framework.Rectangle(
@@ -438,7 +439,7 @@ namespace PlayerArrows.Entry
                     Microsoft.Xna.Framework.Point playerRect = pRect.Center;
                     Vector2 playerCenter = new(playerRect.X, playerRect.Y);
                     // Some reason the built in viewport center always == player center
-                    Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width/2, Game1.viewport.Y + Game1.viewport.Height / 2);
+                    Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width / 2, Game1.viewport.Y + Game1.viewport.Height / 2);
                     arrowPosition = arrowPosition + (playerCenter - viewportCenter);
 
                     // Check if target is onscreen.
@@ -447,7 +448,7 @@ namespace PlayerArrows.Entry
                     xTile.Dimensions.Rectangle targetRect = new(targetRectXNA.X, targetRectXNA.Y, targetRectXNA.Width, targetRectXNA.Height);
 
                     // Enlarge viewport to collide with teleports slightly off screen
-                    xTile.Dimensions.Rectangle myViewport = new (Game1.viewport);
+                    xTile.Dimensions.Rectangle myViewport = new(Game1.viewport);
                     myViewport.X -= 10;
                     myViewport.Y -= 10;
                     myViewport.Width += 20;
@@ -459,6 +460,11 @@ namespace PlayerArrows.Entry
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
 
+                    // If there was no paths to the target, dont display the arrow
+                    if (arrowTarget == new Vector2())
+                    {
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = true;
+                    }
                 }
             }
         }
@@ -546,82 +552,85 @@ namespace PlayerArrows.Entry
             completedPaths = FindTargetMap(targetLocation, currentPath, completedPaths);
             Monitor.Log($"{Game1.player.Name}: Found {completedPaths.Count} possible routes from {Game1.player.currentLocation.NameOrUniqueName} to {targetLocation}", ProgramLogLevel);
 
-            if (completedPaths.Count > 0)
+            // If our algorithm coundn't find a route somehow (likly due to mods) dont update tracking pos
+            if (completedPaths.Count < 1)
             {
-                // Get path that crosses through least locations
-                List<string> shortestPath = completedPaths.OrderBy(item => item.Count).First();
-                string currentLocationName = shortestPath[0];
-                string mapTargetName = shortestPath[1];
+                return new Vector2();
+            }
 
-                // Find a warp in the next location in our path, to point to
-                IList<GameLocation> allLocations = Game1.locations;
-                GameLocation mapTarget = allLocations.FirstOrDefault(item => item.NameOrUniqueName == currentLocationName);
+            // Get path that crosses through least locations
+            List<string> shortestPath = completedPaths.OrderBy(item => item.Count).First();
+            string currentLocationName = shortestPath[0];
+            string mapTargetName = shortestPath[1];
 
-                List<Warp> allWarps = new();
+            // Find a warp in the next location in our path, to point to
+            IList<GameLocation> allLocations = Game1.locations;
+            GameLocation mapTarget = allLocations.FirstOrDefault(item => item.NameOrUniqueName == currentLocationName);
 
-                // colate all our warps, by looping through warps and doors
-                foreach (Warp warp in mapTarget.warps)
+            List<Warp> allWarps = new();
+
+            // colate all our warps, by looping through warps and doors
+            foreach (Warp warp in mapTarget.warps)
+            {
+                bool passable = mapTarget.isTileLocationTotallyClearAndPlaceable(warp.X, warp.Y);
+                bool onMap = mapTarget.isTileOnMap(warp.X, warp.Y);
+
+                // Filter out strange on map, but unpassable teleporters
+                if (onMap && !passable)
                 {
-                    bool passable = mapTarget.isTileLocationTotallyClearAndPlaceable(warp.X, warp.Y);
-                    bool onMap = mapTarget.isTileOnMap(warp.X, warp.Y);
-
-                    // Filter out strange on map, but unpassable teleporters
-                    if (onMap && !passable)
-                    {
-                        continue;
-                    }
-
-                    allWarps.Add(warp);
+                    continue;
                 }
 
-                // Add doors to warps
-                foreach (KeyValuePair<Microsoft.Xna.Framework.Point, string> door in mapTarget.doors.Pairs)
+                allWarps.Add(warp);
+            }
+
+            // Add doors to warps
+            foreach (KeyValuePair<Microsoft.Xna.Framework.Point, string> door in mapTarget.doors.Pairs)
+            {
+                Warp warp = new();
+
+                // A couple doors are a bit buggy, so just skip those for now
+                try
                 {
-                    Warp warp = new();
-
-                    // A couple doors are a bit buggy, so just skip those for now
-                    try
-                    {
-                        warp = mapTarget.getWarpFromDoor(door.Key);
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-
-                    allWarps.Add(warp);
+                    warp = mapTarget.getWarpFromDoor(door.Key);
+                }
+                catch
+                {
+                    continue;
                 }
 
-                // Check our warps, and see if they lead to our target
-                foreach (Warp warp in allWarps)
+                allWarps.Add(warp);
+            }
+
+            // Check our warps, and see if they lead to our target
+            foreach (Warp warp in allWarps)
+            {
+                if (warp.TargetName == mapTargetName)
                 {
-                    if (warp.TargetName == mapTargetName)
-                    {
-                        teleportLocations.Add(warp);
-                    }
-                }
-
-                if (teleportLocations.Count > 0)
-                {
-                    Monitor.Log($"Found {teleportLocations.Count} teleporters", ProgramLogLevel);
-
-                    foreach (Warp tele in teleportLocations)
-                    {
-                        Location location = new(tele.X, tele.Y);
-                        Monitor.Log($"{Game1.player.Name}: Teleporter at: {location * Game1.tileSize}", ProgramLogLevel);
-
-                    }
-                    // TODO change this to closest target instead maybe
-                    Warp warp = teleportLocations[0];
-
-                    Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
-                    return tileTarget;
+                    teleportLocations.Add(warp);
                 }
             }
 
-            // If our algorithm coundn't find a route somehow (likley due to mods) dont update tracking pos
+            if (teleportLocations.Count > 0)
+            {
+                Monitor.Log($"Found {teleportLocations.Count} teleporters", ProgramLogLevel);
+
+                foreach (Warp tele in teleportLocations)
+                {
+                    Location location = new(tele.X, tele.Y);
+                    Monitor.Log($"{Game1.player.Name}: Teleporter at: {location * Game1.tileSize}", ProgramLogLevel);
+
+                }
+                // TODO change this to closest target instead maybe
+                Warp warp = teleportLocations[0];
+
+                Vector2 tileTarget = new Vector2(warp.X, warp.Y) * Game1.tileSize;
+                return tileTarget;
+            }
+
+            // Wont happen, but ide wants it
             return new Vector2();
-          }
+        }
 
 
         // Find all possible routes to target location, by recusively running through all options
