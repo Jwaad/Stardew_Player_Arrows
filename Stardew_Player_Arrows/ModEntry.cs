@@ -365,108 +365,111 @@ namespace PlayerArrows.Entry
                 // Skip self
                 if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
                 {
-                    // Fixes player trying to add players before the game has fully loaded. 
-                    if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
-                    {
-                        continue;
-                    }
-
-                    // Fixes program trying to add players who havn't loaded and given a location themselves yet.
-                    if (farmer.currentLocation == null)
-                    {
-                        continue;
-                    }
-
-                    // If player isn't already in our dict, add them
-                    if (!PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(farmer.UniqueMultiplayerID))
-                    {
-                        // Create an instance for them, we will set the position this loop, so just use defaults
-                        PlayerArrow playerArrow = new(new(0, 0), 0f, ArrowBody, ArrowBorder, farmer.UniqueMultiplayerID, Config);
-                        playerArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, farmer.Name); // Init display text
-                        this.Monitor.Log($"{Game1.player.Name}: Created new text object for : {farmer.Name}", ProgramLogLevel);
-
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Add(farmer.UniqueMultiplayerID, playerArrow);
-
-                        this.Monitor.Log($"{Game1.player.Name}: Instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
-                    }
-
-                    // Target entity in same map
-                    if (farmer.currentLocation == Game1.player.currentLocation)
-                    {
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
-                        arrowTarget = farmer.position.Get();
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = farmer.GetBoundingBox();
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
-                    }
-                    // Target entity in other maps
-                    else
-                    {
-                        // If farmer just left the screen this player is on, or just loaded in, then calculate a path to them
-                        // or When a farmer just spawns in, and is in a different map to our player
-                        if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap ||
-                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position == new Vector2(0, 0))
-                        {
-                            // Update farmer path tracking once farmer leaves the map player is on
-                            PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
-                        }
-                        // Dont calculate this every loop. Instead it should have already been calculated in warping event
-                        arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
-
-
-                        // Create a rect for our tile. NOT SURE HOW GOOD IT IS TO DO THIS EVERY UPODATE LOOP but -(=.=)-
-                        Microsoft.Xna.Framework.Rectangle tileRect = new Microsoft.Xna.Framework.Rectangle(
-                            (int)arrowTarget.X,
-                            (int)arrowTarget.Y,
-                            Game1.tileSize,
-                            Game1.tileSize);
-
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = tileRect;
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = false;
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
-                    }
-
-                    // If there was no paths to the target, dont display the arrow
-                    if (arrowTarget == new Vector2())
-                    {
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = true;
-                        continue; // Since we're not displaying anyways, it doesnt matter if angle etc are default
-                    }
-
-                    // Compute angle difference
-                    double angle = Math.Atan2((arrowTarget.Y - (Game1.player.position.Get().Y)), (arrowTarget.X - Game1.player.position.Get().X));
-
-                    // Set pos of arrow
-                    int arrowX = (int)((Game1.viewport.Width / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2));
-                    int arrowY = (int)((Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
-                    Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
-
-                    // Move arrow by difference between screen center and player center
-                    Microsoft.Xna.Framework.Rectangle pRect = Game1.player.GetBoundingBox();
-                    Microsoft.Xna.Framework.Point playerRect = pRect.Center;
-                    Vector2 playerCenter = new(playerRect.X, playerRect.Y);
-                    // Some reason the built in viewport center always == player center
-                    Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width / 2, Game1.viewport.Y + Game1.viewport.Height / 2);
-                    arrowPosition = arrowPosition + (playerCenter - viewportCenter);
-
-                    // Check if target is onscreen.
-                    // convert its rect to right format.  TODO this conversion should be done at target calc, not here
-                    Microsoft.Xna.Framework.Rectangle targetRectXNA = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect;
-                    xTile.Dimensions.Rectangle targetRect = new(targetRectXNA.X, targetRectXNA.Y, targetRectXNA.Width, targetRectXNA.Height);
-
-                    // Enlarge viewport to collide with teleports slightly off screen
-                    xTile.Dimensions.Rectangle myViewport = new(Game1.viewport);
-                    myViewport.X -= 10;
-                    myViewport.Y -= 10;
-                    myViewport.Width += 20;
-                    myViewport.Height += 20;
-                    bool targetOnScreen = myViewport.Intersects(targetRect);
-
-                    // Update player arrows
-                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
-                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
-                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
+                    continue;
                 }
+
+                // Fixes player trying to add players before the game has fully loaded. 
+                if (!PlayersArrowsDict.ContainsKey(Game1.player.UniqueMultiplayerID))
+                {
+                    continue;
+                }
+
+                // Fixes program trying to add players who havn't loaded and given a location themselves yet.
+                if (farmer.currentLocation == null)
+                {
+                    continue;
+                }
+
+                // If player isn't already in our dict, add them
+                if (!PlayersArrowsDict[Game1.player.UniqueMultiplayerID].ContainsKey(farmer.UniqueMultiplayerID))
+                {
+                    // Create an instance for them, we will set the position this loop, so just use defaults
+                    PlayerArrow playerArrow = new(new(0, 0), 0f, ArrowBody, ArrowBorder, farmer.UniqueMultiplayerID, Config);
+                    playerArrow.CreateTextPNG(Game1.graphics.GraphicsDevice, Game1.smallFont, farmer.Name); // Init display text
+                    this.Monitor.Log($"{Game1.player.Name}: Created new text object for : {farmer.Name}", ProgramLogLevel);
+
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID].Add(farmer.UniqueMultiplayerID, playerArrow);
+
+                    this.Monitor.Log($"{Game1.player.Name}: Instanced new player arrow, target: {farmer.Name}", ProgramLogLevel);
+                }
+
+                // Target entity in same map
+                if (farmer.currentLocation == Game1.player.currentLocation)
+                {
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = true;
+                    arrowTarget = farmer.position.Get();
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = farmer.GetBoundingBox();
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = arrowTarget;
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
+                }
+                // Target entity in other maps
+                else
+                {
+                    // If farmer just left the screen this player is on, or just loaded in, then calculate a path to them
+                    // or When a farmer just spawns in, and is in a different map to our player
+                    if (PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap ||
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position == new Vector2(0, 0))
+                    {
+                        // Update farmer path tracking once farmer leaves the map player is on
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
+                    }
+                    // Dont calculate this every loop. Instead it should have already been calculated in warping event
+                    arrowTarget = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetPos;
+
+
+                    // Create a rect for our tile. NOT SURE HOW GOOD IT IS TO DO THIS EVERY UPODATE LOOP but -(=.=)-
+                    Microsoft.Xna.Framework.Rectangle tileRect = new Microsoft.Xna.Framework.Rectangle(
+                        (int)arrowTarget.X,
+                        (int)arrowTarget.Y,
+                        Game1.tileSize,
+                        Game1.tileSize);
+
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect = tileRect;
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].SameMap = false;
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
+                }
+
+                // If there was no paths to the target, dont display the arrow
+                if (arrowTarget == new Vector2())
+                {
+                    PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = true;
+                    continue; // Since we're not displaying anyways, it doesnt matter if angle etc are default
+                }
+
+                // Compute angle difference
+                double angle = Math.Atan2((arrowTarget.Y - (Game1.player.position.Get().Y)), (arrowTarget.X - Game1.player.position.Get().X));
+
+                // Set pos of arrow
+                int arrowX = (int)((Game1.viewport.Width / 2 * Math.Cos(angle) * 0.9) + (Game1.viewport.Width / 2));
+                int arrowY = (int)((Game1.viewport.Height / 2 * Math.Sin(angle) * 0.9) + (Game1.viewport.Height / 2));
+                Vector2 arrowPosition = new((int)(arrowX), (int)(arrowY));
+
+                // Move arrow by difference between screen center and player center
+                Microsoft.Xna.Framework.Rectangle pRect = Game1.player.GetBoundingBox();
+                Microsoft.Xna.Framework.Point playerRect = pRect.Center;
+                Vector2 playerCenter = new(playerRect.X, playerRect.Y);
+                // Some reason the built in viewport center always == player center
+                Vector2 viewportCenter = new(Game1.viewport.X + Game1.viewport.Width / 2, Game1.viewport.Y + Game1.viewport.Height / 2);
+                arrowPosition = arrowPosition + (playerCenter - viewportCenter);
+
+                // Check if target is onscreen.
+                // convert its rect to right format.  TODO this conversion should be done at target calc, not here
+                Microsoft.Xna.Framework.Rectangle targetRectXNA = PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetRect;
+                xTile.Dimensions.Rectangle targetRect = new(targetRectXNA.X, targetRectXNA.Y, targetRectXNA.Width, targetRectXNA.Height);
+
+                // Enlarge viewport to collide with teleports slightly off screen
+                xTile.Dimensions.Rectangle myViewport = new(Game1.viewport);
+                myViewport.X -= 10;
+                myViewport.Y -= 10;
+                myViewport.Width += 20;
+                myViewport.Height += 20;
+                bool targetOnScreen = myViewport.Intersects(targetRect);
+
+                // Update player arrows
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
+                PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
+            
             }
         }
 
