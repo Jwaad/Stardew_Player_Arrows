@@ -363,7 +363,7 @@ namespace PlayerArrows.Entry
                 Vector2 arrowTarget;
 
                 // Skip self
-                if (farmer.UniqueMultiplayerID != Game1.player.UniqueMultiplayerID)
+                if (farmer.UniqueMultiplayerID == Game1.player.UniqueMultiplayerID)
                 {
                     continue;
                 }
