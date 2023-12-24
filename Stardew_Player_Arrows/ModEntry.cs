@@ -426,6 +426,13 @@ namespace PlayerArrows.Entry
                         PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].PlayerCurrentMap = farmer.currentLocation.NameOrUniqueName;
                     }
 
+                    // If there was no paths to the target, dont display the arrow
+                    if (arrowTarget == new Vector2())
+                    {
+                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = true;
+                        continue; // Since we're not displaying anyways, it doesnt matter if angle etc are default
+                    }
+
                     // Compute angle difference
                     double angle = Math.Atan2((arrowTarget.Y - (Game1.player.position.Get().Y)), (arrowTarget.X - Game1.player.position.Get().X));
 
@@ -459,12 +466,6 @@ namespace PlayerArrows.Entry
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = targetOnScreen;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].Position = arrowPosition;
                     PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].ArrowAngle = (float)angle;
-
-                    // If there was no paths to the target, dont display the arrow
-                    if (arrowTarget == new Vector2())
-                    {
-                        PlayersArrowsDict[Game1.player.UniqueMultiplayerID][farmer.UniqueMultiplayerID].TargetOnScreen = true;
-                    }
                 }
             }
         }
@@ -485,7 +486,7 @@ namespace PlayerArrows.Entry
                 // Update pos of target tile, per existing tracking arrow
                 Vector2 trackTarget = FindTeleporterTile(farmer.currentLocation.NameOrUniqueName);
 
-                // Only overwrite target pos if track target didnt also default
+                // if trackTarget defaulted, then also default arrow target pos
                 arrow.TargetPos = trackTarget != new Vector2() ? trackTarget: arrow.TargetPos;
             }
         }
